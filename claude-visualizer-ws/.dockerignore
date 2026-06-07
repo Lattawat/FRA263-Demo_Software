@@ -1,0 +1,11 @@
+build/
+install/
+log/
+.venv/
+encoder_data_publisher/
+src/micro_ros_setup/
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+.vscode/
+.git/

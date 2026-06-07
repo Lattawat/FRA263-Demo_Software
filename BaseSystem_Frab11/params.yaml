@@ -1,0 +1,119 @@
+# ── motion_verifier global parameters ───────────────────────────────────────
+# Load with: ros2 launch motion_verifier bringup.launch.py
+# Or pass directly: ros2 run motion_verifier encoder_reader.py
+#                     --ros-args --params-file config/params.yaml
+
+# ---------------------------------------------------------------------------
+# mock_encoder node
+# ---------------------------------------------------------------------------
+mock_encoder:
+  ros__parameters:
+    publish_rate_hz: 500.0        # publication frequency
+
+    # Waveform: "sine" | "trapezoid" | "step"
+    waveform: "trapezoid"
+
+    # Sine parameters (used when waveform == "sine")
+    sine_amplitude: 6.2832        # [rad]  = 1 full revolution
+    sine_frequency_hz: 0.5
+
+    # Trapezoid parameters (used when waveform == "trapezoid")
+    trap_max_velocity: 3.1416     # [rad/s]
+    trap_acceleration: 1.5708     # [rad/s²]
+    trap_cruise_time_s: 2.0
+
+    # Noise
+    noise_std_ticks: 1.0          # std-dev of Gaussian noise added to ticks
+    ticks_per_rev: 4096           # encoder resolution (CPR after quadrature)
+
+# ---------------------------------------------------------------------------
+# encoder_reader node
+# ---------------------------------------------------------------------------
+encoder_reader:
+  ros__parameters:
+    publish_rate_hz: 500.0
+    ticks_per_rev: 4096           # must match mock_encoder / real hardware
+
+    # Kalman Filter — process noise covariance (tune these)
+    kf_q_position: 0.001
+    kf_q_velocity: 0.01
+    kf_q_acceleration: 0.1
+    kf_q_jerk: 0.0
+
+    # Kalman Filter — measurement noise covariance
+    kf_r_position: 0.5            # larger = trust encoder less, smoother output
+
+    # Initial state uncertainty
+    kf_p0: 1.0
+
+# ---------------------------------------------------------------------------
+# web_visualizer node
+# ---------------------------------------------------------------------------
+web_visualizer:
+  ros__parameters:
+    ws_port: 9090
+    lsl_params:
+      resolve_timeout_s: 5.0
+      actual_states_stream:
+        name: "ActualStates"
+      event_trigger_stream:
+        name: "EventTrigger"
+      estimated_states_stream:
+        name: "EstimatedStates"
+        type: "States"
+        channel:
+          - "estimated_position"
+          - "estimated_velocity"
+          - "estimated_acceleration"
+        outlet_type: "REGULAR"
+        sampling_rate_hz: 500.0
+        source_id: "web_visualizer"
+    topics:
+      actual_states: "/actual_states"
+      event_trigger: "/event_trigger"
+      encoder:       "/estimated_states"
+
+# ---------------------------------------------------------------------------
+# mock_robot_controller (NOT a ROS node — reads this file directly via PyYAML)
+# Wrapped under ros__parameters: so the ROS parameter parser accepts it.
+# ROS flattens nested keys to dotted parameter names; harmless to ROS nodes.
+# ---------------------------------------------------------------------------
+mock_robot_controller:
+  ros__parameters:
+    lsl_params:
+      actual_states_stream:
+        name: "ActualStates"
+        type: "States"
+        channel:
+          - "actual_position"
+          - "actual_velocity"
+          - "actual_acceleration"
+        outlet_type: "REGULAR"
+        sampling_rate_hz: 500.0
+        source_id: "mock_robot_controller-actual_states"
+
+      event_trigger_stream:
+        name: "EventTrigger"
+        type: "Trigger"
+        channel:
+          - "json_payload"
+        outlet_type: "IRREGULAR"
+        source_id: "mock_robot_controller-event_trigger"
+
+    waveform_config:
+      # Waveform: "sine" | "trapezoid" | "step"
+      type: "trapezoid"
+
+      # Sine parameters
+      sine_amplitude: 6.2832
+      sine_frequency_hz: 0.5
+
+      # Trapezoid parameters
+      trap_max_velocity: 3.1416
+      trap_acceleration: 1.5708
+      trap_cruise_time_s: 2.0
+
+      # Step parameters
+      step_amplitude: 6.2832
+      step_period_s: 2.0
+

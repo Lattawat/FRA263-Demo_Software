@@ -1,0 +1,5 @@
+
+*.pyc
+/claude-visualizer-ws/build
+/claude-visualizer-ws/install
+/claude-visualizer-ws/log

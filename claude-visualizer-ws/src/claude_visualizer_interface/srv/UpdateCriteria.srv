@@ -1,0 +1,5 @@
+string criteria_json
+---
+bool success
+string message
+string current_criteria_json

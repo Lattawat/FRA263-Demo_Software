@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>claude_visualizer</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/uplot@1.6.30/dist/uPlot.min.css">
+    <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+    <header>
+        <h1>claude_visualizer</h1>
+        <div class="header-controls">
+            <button id="btn-time-sync">Time Sync</button>
+            <button id="btn-pos-sync">Pos Sync</button>
+            <button id="btn-zero">Zero</button>
+            <div class="status">
+                <span id="status-dot" class="dot disconnected"></span>
+                <span id="status-text">Disconnected</span>
+            </div>
+        </div>
+    </header>
+
+    <main>
+        <!-- LEFT PANEL: Live rolling plots -->
+        <section class="panel panel-left" id="panel-left">
+            <div class="live-header">
+                <h2>Live</h2>
+                <button id="btn-unit-live" class="btn-toggle">rad</button>
+            </div>
+
+            <div class="plot-container">
+                <div class="plot-label">
+                    Position <span class="pos-unit-label-live">[rad]</span> &mdash;
+                    <span class="legend-est">estimated</span>
+                    <span class="legend-actual">actual</span>
+                </div>
+                <div class="plot-wrapper">
+                    <div class="plot" id="plot-position"></div>
+                    <div class="crop-overlay" id="co-position"></div>
+                </div>
+            </div>
+
+            <div class="plot-container">
+                <div class="plot-label">
+                    Velocity [rad/s] &mdash;
+                    <span class="legend-est">estimated</span>
+                    <span class="legend-actual">actual</span>
+                </div>
+                <div class="plot-wrapper">
+                    <div class="plot" id="plot-velocity"></div>
+                    <div class="crop-overlay" id="co-velocity"></div>
+                </div>
+            </div>
+
+            <div class="plot-container">
+                <div class="plot-label">
+                    Acceleration [rad/s&sup2;] &mdash;
+                    <span class="legend-est">estimated</span>
+                    <span class="legend-actual">actual</span>
+                </div>
+                <div class="plot-wrapper">
+                    <div class="plot" id="plot-acceleration"></div>
+                    <div class="crop-overlay" id="co-acceleration"></div>
+                </div>
+            </div>
+        </section>
+
+        <!-- RIGHT PANEL: Profile + Zoom tabs -->
+        <section class="panel panel-right">
+            <div class="tab-bar">
+                <button class="tab-btn active" data-tab="profile">PROFILE</button>
+                <button class="tab-btn" data-tab="zoom">ZOOM</button>
+                <button class="tab-btn" data-tab="criteria">CRITERIA</button>
+                <div class="tab-bar-actions">
+                    <button id="btn-save-csv" disabled>Save CSV</button>
+                    <button id="btn-unit-profile" class="btn-toggle">rad</button>
+                    <button id="btn-auto" class="btn-toggle active">Auto</button>
+                    <button id="btn-stop">Stop</button>
+                </div>
+            </div>
+
+            <!-- PROFILE tab -->
+            <div id="tab-profile" class="tab-content">
+                <div id="profile-idle" class="idle-msg">
+                    <p>Waiting for EventTrigger&hellip;</p>
+                </div>
+                <div id="profile-active" class="hidden">
+                    <div class="profile-header">
+                        <div>
+                            <div class="profile-title" id="profile-label">&mdash;</div>
+                            <div class="profile-meta">
+                                <span id="profile-id">&mdash;</span>
+                                <span class="sep">&middot;</span>
+                                <span id="profile-elapsed">0.0</span>s
+                                <span class="sep">/</span>
+                                <span id="profile-duration">&mdash;</span>s
+                            </div>
+                        </div>
+                        <button id="btn-reset-profile">Reset</button>
+                    </div>
+                    <div class="plot-container">
+                        <div class="plot-label">
+                            Position <span class="pos-unit-label-profile">[rad]</span> &mdash;
+                            <span class="legend-est">estimated</span>
+                            <span class="legend-target">target</span>
+                        </div>
+                        <div class="plot" id="plot-profile-position"></div>
+                    </div>
+                    <div class="plot-container">
+                        <div class="plot-label">
+                            Velocity [rad/s] &mdash;
+                            <span class="legend-est">estimated</span>                        </div>
+                        <div class="plot" id="plot-profile-velocity"></div>
+                    </div>
+                    <div class="plot-container">
+                        <div class="plot-label">
+                            Acceleration [rad/s&sup2;] &mdash;
+                            <span class="legend-est">estimated</span>                        </div>
+                        <div class="plot" id="plot-profile-acceleration"></div>
+                    </div>
+                    <div id="eval-live" class="hidden">
+                        <div class="eval-header">
+                            <span id="eval-live-label">&mdash;</span>
+                            <span class="eval-badge eval-badge-running">RUNNING</span>
+                        </div>
+                        <div id="eval-metrics-rows" class="eval-rows"></div>
+                    </div>
+                    <div id="eval-summary" class="hidden">
+                        <div class="eval-header">
+                            <span id="eval-summary-action">&mdash;</span>
+                            <span class="eval-badge eval-badge-done">DONE</span>
+                        </div>
+                        <div id="eval-summary-rows" class="eval-rows"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ZOOM tab -->
+            <div id="tab-zoom" class="tab-content hidden">
+                <div id="zoom-idle" class="idle-msg">
+                    <p>Press <strong>Crop</strong> then drag a range on the left plots to zoom in.</p>
+                </div>
+                <div id="zoom-active" class="hidden">
+                    <div class="zoom-header">
+                        <span id="zoom-range" class="zoom-range-label"></span>
+                        <button id="btn-reset-zoom">Reset</button>
+                    </div>
+                    <div class="plot-container">
+                        <div class="plot-label">
+                            Position <span class="pos-unit-label-profile">[rad]</span> &mdash;
+                            <span class="legend-est">estimated</span>                        </div>
+                        <div class="plot" id="plot-zoom-position"></div>
+                    </div>
+                    <div class="plot-container">
+                        <div class="plot-label">
+                            Velocity [rad/s] &mdash;
+                            <span class="legend-est">estimated</span>                        </div>
+                        <div class="plot" id="plot-zoom-velocity"></div>
+                    </div>
+                    <div class="plot-container">
+                        <div class="plot-label">
+                            Acceleration [rad/s&sup2;] &mdash;
+                            <span class="legend-est">estimated</span>                        </div>
+                        <div class="plot" id="plot-zoom-acceleration"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- CRITERIA tab -->
+            <div id="tab-criteria" class="tab-content hidden">
+                <div id="criteria-idle" class="idle-msg">
+                    <p>Connecting to evaluator&hellip;</p>
+                </div>
+                <div id="criteria-active" class="hidden">
+                    <div id="criteria-rows" class="criteria-rows"></div>
+                </div>
+            </div>
+
+        </section>
+    </main>
+
+    <!-- Shared cursor tooltip (fixed-positioned, managed by app.js) -->
+    <div id="plot-tooltip" class="plot-tooltip hidden"></div>
+
+    <footer>
+        <div class="controls">
+            <button id="btn-clear">Clear</button>
+            <button id="btn-pause">Pause</button>
+            <button id="btn-crop">Crop</button>
+        </div>
+        <div class="controls">
+            <div class="ws-url" id="ws-url">ws://localhost:9090</div>
+        </div>
+    </footer>
+
+    <script src="https://cdn.jsdelivr.net/npm/uplot@1.6.30/dist/uPlot.iife.min.js"></script>
+    <script src="./app.js"></script>
+</body>
+</html>

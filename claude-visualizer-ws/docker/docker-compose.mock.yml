@@ -1,0 +1,47 @@
+name: claude_visualizer_mock
+
+# Mock mode — macOS, or any machine without a Teensy connected
+# Uses mock_encoder.py (software stand-in) instead of real hardware.
+# Usage: docker compose -f docker-compose.mock.yml up
+#
+# To send experiment commands, in a second terminal:
+#   docker attach claude_visualizer_mock-mock_controller-1
+#   Then type: ptp 5 index | stop | quit
+#   Ctrl+P then Ctrl+Q to detach without stopping
+
+services:
+  ros_nodes:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    image: claude_visualizer:latest
+    networks:
+      - ros_net
+    environment:
+      - RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+      - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
+      - CYCLONEDDS_URI=file:///ros2_ws/docker/cyclone_bridge.xml
+    command: >
+      ros2 launch claude_visualizer bringup.launch.py
+      use_mock_encoder:=true
+    ports:
+      - "8000:8000"
+      - "9090:9090"
+
+  mock_controller:
+    image: claude_visualizer:latest
+    networks:
+      - ros_net
+    environment:
+      - RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+      - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
+      - CYCLONEDDS_URI=file:///ros2_ws/docker/cyclone_bridge.xml
+    stdin_open: true
+    tty: true
+    command: ros2 run claude_visualizer mock_robot_controller.py
+    depends_on:
+      - ros_nodes
+
+networks:
+  ros_net:
+    driver: bridge

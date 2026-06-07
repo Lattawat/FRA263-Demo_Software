@@ -1,0 +1,27 @@
+name: claude_visualizer
+
+# Hardware mode — Linux and Windows WSL2 (real Teensy connected via USB)
+# Usage: docker compose up
+#
+# For mock mode (macOS, no Teensy): use docker-compose.mock.yml instead
+#   docker compose -f docker-compose.mock.yml up
+
+services:
+  micro_ros_agent:
+    image: microros/micro-ros-agent:jazzy
+    command: serial --dev ${SERIAL_PORT:-/dev/ttyACM0} -b 115200 -v4
+    devices:
+      - "${SERIAL_PORT:-/dev/ttyACM0}:${SERIAL_PORT:-/dev/ttyACM0}"
+    network_mode: host
+    restart: unless-stopped
+
+  ros_nodes:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    image: claude_visualizer:latest
+    network_mode: host
+    environment:
+      - RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+      - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
+    restart: unless-stopped

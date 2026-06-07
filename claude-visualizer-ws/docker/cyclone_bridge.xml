@@ -1,0 +1,12 @@
+<CycloneDDS>
+  <Domain>
+    <General>
+      <AllowMulticast>true</AllowMulticast>
+      <MaxMessageSize>65500B</MaxMessageSize>
+    </General>
+    <Discovery>
+      <ParticipantIndex>auto</ParticipantIndex>
+      <MaxAutoParticipantIndex>32</MaxAutoParticipantIndex>
+    </Discovery>
+  </Domain>
+</CycloneDDS>
