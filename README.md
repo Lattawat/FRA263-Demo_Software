@@ -28,20 +28,20 @@ export ROS_DOMAIN_ID=156
 pip install --user pymodbus==3.3.0 --force-reinstall
 pip install websockets
 pip install pylsl
-cd ~/FRA263_BaseSystem_VerificationSystem_FRAB11/FRA263-264_BaseSystem
+cd ~/FRA263-Demo_Software/FRA263-264_BaseSystem
 docker load -i frontend-image_v1_2.tar     # first time only
 docker compose up -d
 ```
 
 **To close UI**
 ```bash
-cd ~/FRA263_BaseSystem_VerificationSystem_FRAB11/FRA263-264_BaseSystem
+cd ~/FRA263-Demo_Software/FRA263-264_BaseSystem
 docker compose down      # stops + removes the UI container
 ```
 
 **Terminal 2 — backend**
 ```bash
-cd ~/FRA263_BaseSystem_VerificationSystem_FRAB11/BaseSystem_Frab11
+cd ~/FRA263-Demo_Software/BaseSystem_Frab11
 pip install --user pymodbus websockets pyserial pylsl     # first time only
 python3 server_111.py
 ```
