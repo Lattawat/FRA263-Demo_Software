@@ -4,14 +4,14 @@
 
 **Terminal 1 — Teensy bridge**
 ```bash
-cd ~/FRA263_BaseSystem_VerificationSystem_FRAB11/claude-visualizer-ws
+cd ~/FRA263-Demo_Software/claude-visualizer-ws
 source /opt/ros/humble/setup.bash && source install/setup.bash && export ROS_DOMAIN_ID=156
 ros2 run micro_ros_agent micro_ros_agent serial --dev /dev/ttyACM0 -b 115200
 ```
 
 **Terminal 2 — pipeline**
 ```bash
-cd ~/FRA263_BaseSystem_VerificationSystem_FRAB11/claude-visualizer-ws
+cd ~/FRA263-Demo_Software/claude-visualizer-ws
 source /opt/ros/humble/setup.bash && source install/setup.bash && export ROS_DOMAIN_ID=156
 ros2 launch claude_visualizer bringup.launch.py
 ```
