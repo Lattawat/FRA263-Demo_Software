@@ -24,6 +24,10 @@ Open: [http://localhost:8000](http://localhost:8000)
 
 **Terminal 1 — UI**
 ```bash
+export ROS_DOMAIN_ID=156
+pip install --user pymodbus==3.3.0 --force-reinstall
+pip install websockets
+pip install pylsl
 cd ~/FRA263_BaseSystem_VerificationSystem_FRAB11/FRA263-264_BaseSystem
 docker load -i frontend-image_v1_2.tar     # first time only
 docker compose up -d
