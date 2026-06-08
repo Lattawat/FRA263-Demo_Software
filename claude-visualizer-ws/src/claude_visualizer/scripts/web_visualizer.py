@@ -353,6 +353,12 @@ class WebVisualizerNode(Node):
             msg.header.frame_id = "browser"
             msg.event = json.dumps({"mode": "STOP", "action": "stop"})
             self._event_trigger_pub.publish(msg)
+        elif command == "skip_iteration":
+            msg = EventTrigger()
+            msg.header.stamp = self.get_clock().now().to_msg()
+            msg.header.frame_id = "browser"
+            msg.event = json.dumps({"action": "skip_iteration"})
+            self._event_trigger_pub.publish(msg)
         elif command == "criteria_update":
             data = cmd.get("data", {})
             if not self._criteria_client.wait_for_service(timeout_sec=0.5):

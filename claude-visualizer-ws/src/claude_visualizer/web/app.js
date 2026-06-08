@@ -16,6 +16,7 @@
     const state = {
         paused:          false,
         profileActive:   false,
+        profileAction:   null,    // current experiment action (for Skip button visibility)
         profileStartTs:  0,
         latestActual:    null,    // latest actual_states msg data
         timeRef:         null,    // epoch-second reference; null = use first stamp
@@ -406,7 +407,16 @@
 
     function stopProfile() {
         state.profileActive = false;
+        state.profileAction = null;
+        updateSkipBtn();
         updateSaveCsvBtn();
+    }
+
+    // Skip Iteration only applies to the multi-iteration modes.
+    function updateSkipBtn() {
+        const skippable = state.profileActive &&
+            (state.profileAction === "precision" || state.profileAction === "pick_place");
+        document.getElementById("btn-skip-iteration").classList.toggle("hidden", !skippable);
     }
 
     const EXPERIMENT_LABELS = {
@@ -427,6 +437,8 @@
     function startExperiment(data) {
         const label = EXPERIMENT_LABELS[data.action] ?? data.action;
         startProfile({ label, stamp: data.stamp });
+        state.profileAction = data.action;
+        updateSkipBtn();
         clearEval();
     }
 
@@ -436,8 +448,11 @@
         if (!state.trackEvents) return;
         const data = msg.data;
         if (!data.action) return;
-        if (data.action === "stop") stopExperiment();
-        else startExperiment(data);
+        if (data.action === "stop") { stopExperiment(); return; }
+        // Only genuine experiment-start events (re)start the profile. Control
+        // signals such as skip_iteration loop back through /event_trigger too, and
+        // must NOT reset the profile plot / x-axis or wipe the measured data.
+        if (data.action in EXPERIMENT_LABELS) startExperiment(data);
     }
 
     // ── Redraw loop (30 Hz, decoupled from message rate) ─────────────────────
@@ -512,14 +527,18 @@
         total_waypoints:         "Total WPs",
         passed:                  "Passed WPs",
         failed:                  "Failed WPs",
+        skipped:                 "Skipped WPs",
         trials_done:             "Trials done",
+        trials_skipped:          "Trials skipped",
         trials_total:            "Total trials",
         num_trials:              "Trials",
+        num_skipped:             "Trials skipped",
     };
 
     const INT_FIELDS = new Set([
-        "current_waypoint", "total_waypoints", "trials_done", "trials_total",
-        "passed", "failed", "num_trials", "waypoint",
+        "current_waypoint", "total_waypoints", "trials_done", "trials_skipped",
+        "trials_total", "passed", "failed", "skipped", "num_trials", "num_skipped",
+        "waypoint",
     ]);
 
     function fmtVal(k, v) {
@@ -553,6 +572,7 @@
     function onEvalLive(msg) {
         const d = msg.data;
         if (d.target_rad != null) state.targetRef = d.target_rad;
+        if (d.action) { state.profileAction = d.action; updateSkipBtn(); }
         document.getElementById("eval-summary").classList.add("hidden");
         document.getElementById("eval-live-label").textContent =
             EXPERIMENT_LABELS[d.action] ?? d.action ?? "Experiment";
@@ -575,13 +595,14 @@
             for (const wp of d.details) {
                 const groupEl = document.createElement("div");
                 groupEl.className = "eval-waypoint-group";
+                const skipped = wp.skipped === true;
                 const allPass = wp.pass_error && wp.pass_overshoot && wp.pass_settling;
                 const hdr = document.createElement("div");
-                hdr.className = "eval-row" + (allPass ? " pass-ok" : " pass-fail");
+                hdr.className = "eval-row" + (skipped ? " pass-skip" : (allPass ? " pass-ok" : " pass-fail"));
                 hdr.innerHTML = `<span class="eval-key">Waypoint ${wp.waypoint}</span>` +
-                                `<span class="eval-val">${allPass ? "PASS" : "FAIL"}</span>`;
+                                `<span class="eval-val">${skipped ? "SKIPPED" : (allPass ? "PASS" : "FAIL")}</span>`;
                 groupEl.appendChild(hdr);
-                const SKIP_WP = new Set(["waypoint"]);
+                const SKIP_WP = new Set(["waypoint", "skipped"]);
                 for (const [k, v] of Object.entries(wp))
                     if (!SKIP_WP.has(k) && v != null) appendRow(groupEl, k, v);
                 rows.appendChild(groupEl);
@@ -880,6 +901,12 @@
             ws.send(JSON.stringify({ command: "stop_experiment" }));
         } else {
             stopProfile();
+        }
+    });
+
+    document.getElementById("btn-skip-iteration").addEventListener("click", () => {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ command: "skip_iteration" }));
         }
     });
 

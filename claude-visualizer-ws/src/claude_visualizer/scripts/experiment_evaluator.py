@@ -141,6 +141,7 @@ class ExperimentEvaluator(Node):
         self._start_pos_rad: float | None     = None
         self._start_time_s: float | None      = None
         self._last_live_time_s: float         = 0.0
+        self._last_pos_rad: float | None      = None  # latest /estimated_states position
         self._samples: list[tuple[float, float, float]] = []  # (pos_rad, vel_rad_s, accel_rad_s2)
 
         # ptp settling
@@ -161,6 +162,7 @@ class ExperimentEvaluator(Node):
         self._trial_positions_rad: list[float]     = []
         self._prec_at_target: bool                 = False
         self._prec_cont_band_entry_s: float | None = None
+        self._prec_skipped: int                    = 0
 
         # performance
         self._peak_speed_rad_s: float  = 0.0
@@ -181,6 +183,11 @@ class ExperimentEvaluator(Node):
             if self._active_action is not None:
                 self.get_logger().info("[Evaluator] STOP received — finishing experiment")
                 self._finish_experiment()
+            return
+
+        if action == "skip_iteration":
+            if self._active_action is not None:
+                self._skip_iteration()
             return
 
         if action in ("point_to_point", "pick_place", "performance", "precision"):
@@ -217,6 +224,7 @@ class ExperimentEvaluator(Node):
         vel_rad_s    = msg.velocity
         accel_rad_s2 = msg.acceleration
         now_s        = self.get_clock().now().nanoseconds * 1e-9
+        self._last_pos_rad = pos_rad
 
         if self._start_pos_rad is None:
             self._start_pos_rad = pos_rad
@@ -344,6 +352,90 @@ class ExperimentEvaluator(Node):
         self._wp_reached_target     = False
         self._wp_peak_pos_rad       = None
 
+    # ── manual skip ───────────────────────────────────────────────────────────
+    def _skip_iteration(self):
+        """Manually skip the current iteration and advance to the next one.
+
+        Only pick_place and precision have multiple iterations; other actions are
+        single-shot, so skipping is a no-op there.
+        """
+        if self._active_action == "pick_place":
+            self._skip_waypoint()
+        elif self._active_action == "precision":
+            self._skip_trial()
+        else:
+            self.get_logger().warn(
+                f"[Evaluator] skip_iteration ignored for action {self._active_action!r}"
+            )
+
+    def _skip_waypoint(self):
+        """Drop the current (unsettled) waypoint and advance to the next one.
+
+        The skipped waypoint is recorded as a failed/skipped result (excluded from the
+        average-error summary). The next waypoint's travel baseline is set to the robot's
+        ACTUAL current position (latest /estimated_states) instead of the unreached
+        target, so its settling band and overshoot are measured from where the robot is.
+        """
+        sequence   = self._payload["order_sequence"]
+        target_rad = sequence[self._wp_idx] * RAD_PER_INDEX
+        cur_pos    = self._last_pos_rad
+        if cur_pos is None:
+            cur_pos = (self._wp_prev_target_rad if self._wp_prev_target_rad is not None
+                       else (self._start_pos_rad or 0.0))
+
+        self._wp_results.append({
+            "waypoint":        self._wp_idx + 1,
+            "target_rad":      round(target_rad, 5),
+            "final_error_rad": round(abs(cur_pos - target_rad), 5),
+            "overshoot_pct":   0.0,
+            "settling_time_s": None,
+            "skipped":         True,
+            "pass_error":      False,
+            "pass_overshoot":  False,
+            "pass_settling":   False,
+        })
+        self.get_logger().info(
+            f"[Evaluator] pick_place waypoint {self._wp_idx + 1} SKIPPED"
+        )
+
+        if self._wp_idx == len(sequence) - 1:
+            self._finish_experiment()
+            return
+
+        # Advance; baseline = actual current position (NOT the unreached target).
+        self._wp_prev_target_rad    = cur_pos
+        self._wp_idx               += 1
+        self._wp_first_band_entry_s = None
+        self._wp_cont_band_entry_s  = None
+        self._wp_reached_target     = False
+        self._wp_peak_pos_rad       = None
+
+    def _skip_trial(self):
+        """Advance the precision run past a stuck phase.
+
+        Phase = approaching the target (``_prec_at_target`` False): the trial is being
+        attempted but hasn't been recorded, so drop it — count it toward the repeat
+        total (so the run still terminates) but record no position (excluded from the
+        mean/std/max stats).
+
+        Phase = returning to the init position (``_prec_at_target`` True): the previous
+        trial was already recorded; we're only stuck on the inter-trial return, so just
+        proceed to the next approach WITHOUT counting a dropped trial.
+        """
+        self._prec_cont_band_entry_s = None
+        if self._prec_at_target:
+            self._prec_at_target = False
+            self.get_logger().info("[Evaluator] precision return-to-init SKIPPED")
+            return
+
+        self._prec_skipped += 1
+        self.get_logger().info(
+            f"[Evaluator] precision trial SKIPPED "
+            f"({len(self._trial_positions_rad)} done, {self._prec_skipped} skipped)"
+        )
+        if len(self._trial_positions_rad) + self._prec_skipped >= self._payload["repeat"]:
+            self._finish_experiment()
+
     def _update_perf(self, vel_rad_s: float, accel_rad_s2: float):
         self._peak_speed_rad_s  = max(self._peak_speed_rad_s,  abs(vel_rad_s))
         self._peak_accel_rad_s2 = max(self._peak_accel_rad_s2, abs(accel_rad_s2))
@@ -365,7 +457,8 @@ class ExperimentEvaluator(Node):
                     self._trial_positions_rad.append(pos_rad)
                     self._prec_at_target         = True
                     self._prec_cont_band_entry_s = None
-                    if len(self._trial_positions_rad) == payload["repeat"]:
+                    if (len(self._trial_positions_rad) + self._prec_skipped
+                            >= payload["repeat"]):
                         self._finish_experiment()
                         return
             else:
@@ -421,6 +514,7 @@ class ExperimentEvaluator(Node):
                 "current_pos_rad":   round(pos_rad, 5),
                 "current_error_rad": round(abs(pos_rad - tar_rad), 5),
                 "trials_done":       len(self._trial_positions_rad),
+                "trials_skipped":    self._prec_skipped,
                 "trials_total":      self._payload["repeat"],
                 "elapsed_s":         round(elapsed_s, 3),
             }
@@ -463,9 +557,10 @@ class ExperimentEvaluator(Node):
             }
 
         if action == "pick_place":
+            scored = [r for r in self._wp_results if not r.get("skipped")]
             avg_error_rad = (
-                sum(r["final_error_rad"] for r in self._wp_results) / len(self._wp_results)
-                if self._wp_results else 0.0
+                sum(r["final_error_rad"] for r in scored) / len(scored)
+                if scored else 0.0
             )
             passed_count = sum(
                 1 for r in self._wp_results
@@ -474,9 +569,10 @@ class ExperimentEvaluator(Node):
             return {
                 "total_waypoints": len(self._payload["order_sequence"]),
                 "avg_error_rad":   round(avg_error_rad, 5),
-                "pass_avg_error":  len(self._wp_results) > 0 and avg_error_rad <= c["max_avg_error_rad"],
+                "pass_avg_error":  len(scored) > 0 and avg_error_rad <= c["max_avg_error_rad"],
                 "passed":          passed_count,
                 "failed":          len(self._wp_results) - passed_count,
+                "skipped":         len(self._wp_results) - len(scored),
                 "details":         self._wp_results,
             }
 
@@ -509,6 +605,7 @@ class ExperimentEvaluator(Node):
             return {
                 "target_rad":     round(tar_rad, 5),
                 "num_trials":     n_done,
+                "num_skipped":    self._prec_skipped,
                 "mean_error_rad": round(mean_error_rad, 5),
                 "std_error_rad":  round(std_error_rad, 5),
                 "max_error_rad":  round(max_error_rad, 5),

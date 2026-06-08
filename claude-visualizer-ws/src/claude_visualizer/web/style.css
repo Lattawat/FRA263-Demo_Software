@@ -252,6 +252,15 @@ main {
     border-bottom: 1px solid var(--border);
 }
 
+.profile-header-actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+/* Skip is a caution action — distinguish it from the primary Reset button. */
+#btn-skip-iteration            { background: var(--accent-dim); }
+#btn-skip-iteration:hover      { background: var(--accent-hover); }
+
 .profile-title {
     font-size: 15px;
     font-weight: 600;
@@ -415,6 +424,8 @@ button.crop-active:hover { background: rgba(59, 130, 246, 1); }
 .eval-row.pass-fail { background: rgba(192,57,43,0.08); }
 .eval-row.pass-ok   .eval-val { color: var(--connected); font-weight: 700; }
 .eval-row.pass-fail .eval-val { color: var(--disconnected); font-weight: 700; }
+.eval-row.pass-skip      { background: rgba(255,108,0,0.08); }
+.eval-row.pass-skip .eval-val { color: var(--accent); font-weight: 700; }
 .eval-waypoint-title {
     font-size: 10px;
     font-weight: 700;
