@@ -52,6 +52,11 @@ encoder_reader:
 web_visualizer:
   ros__parameters:
     ws_port: 9090
+    http_port: 8000
+    ws_host: "0.0.0.0"
+    # session: LSL stream suffix for multi-pair isolation. Normally set by the
+    # launch file from pair_id / CV_PAIR_ID; "" = legacy single-pair (no suffix).
+    session: ""
     lsl_params:
       resolve_timeout_s: 5.0
       actual_states_stream:

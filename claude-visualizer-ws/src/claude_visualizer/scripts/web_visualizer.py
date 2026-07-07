@@ -134,6 +134,19 @@ def _eval_to_json(topic: str, msg: ExperimentEval) -> dict:
 class _SilentHTTPHandler(http.server.SimpleHTTPRequestHandler):
     def log_message(self, *args): pass
 
+    # Serve the runtime WebSocket port to the browser so app.js no longer needs a
+    # hardcoded port. ws_port is attached to the server object in _run_http_server.
+    def do_GET(self):
+        if self.path == "/config.json":
+            body = json.dumps({"ws_port": self.server.ws_port}).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+        return super().do_GET()
+
 
 # ── Node ──────────────────────────────────────────────────────────────────────
 
@@ -146,6 +159,8 @@ class WebVisualizerNode(Node):
         self.declare_parameter("ws_port", 9090)
         self.declare_parameter("ws_host", "0.0.0.0")
         self.declare_parameter("http_port", 8000)
+        # LSL stream suffix for multi-pair LAN isolation ("" = legacy single-pair).
+        self.declare_parameter("session", "")
         self.declare_parameter("lsl_params.actual_states_stream.name",   "ActualStates")
         self.declare_parameter("lsl_params.event_trigger_stream.name",    "EventTrigger")
         self.declare_parameter("lsl_params.resolve_timeout_s",            5.0)
@@ -165,8 +180,14 @@ class WebVisualizerNode(Node):
         self._ws_port         = self.get_parameter("ws_port").value
         self._ws_host         = self.get_parameter("ws_host").value
         self._http_port       = self.get_parameter("http_port").value
-        actual_states_stream  = self.get_parameter("lsl_params.actual_states_stream.name").value
-        event_trigger_stream  = self.get_parameter("lsl_params.event_trigger_stream.name").value
+        # actual_states_stream  = self.get_parameter("lsl_params.actual_states_stream.name").value
+        # event_trigger_stream  = self.get_parameter("lsl_params.event_trigger_stream.name").value
+        # Apply the per-pair LSL suffix so this verifier resolves only its own robot's streams.
+        session = self.get_parameter("session").value or ""
+        _suf = (lambda n: f"{n}_{session}") if session else (lambda n: n)
+        actual_states_stream  = _suf(self.get_parameter("lsl_params.actual_states_stream.name").value)
+        event_trigger_stream  = _suf(self.get_parameter("lsl_params.event_trigger_stream.name").value)
+        
         resolve_timeout       = self.get_parameter("lsl_params.resolve_timeout_s").value
         actual_states_topic   = self.get_parameter("topics.actual_states").value
         event_trigger_topic   = self.get_parameter("topics.event_trigger").value
@@ -175,14 +196,25 @@ class WebVisualizerNode(Node):
         self.actual_states_channel  = self.get_parameter("lsl_params.actual_states_stream.channel").value
         self.event_trigger_channel  = self.get_parameter("lsl_params.event_trigger_stream.channel").value
         
+        # estimated_states_lsl_stream_info = dict(
+        #     {
+        #         "name": self.get_parameter("lsl_params.estimated_states_stream.name").value,
+        #         "type": self.get_parameter("lsl_params.estimated_states_stream.type").value,
+        #         "channel": self.get_parameter("lsl_params.estimated_states_stream.channel").value,
+        #         "outlet_type": self.get_parameter("lsl_params.estimated_states_stream.outlet_type").value,
+        #         "sampling_rate_hz": self.get_parameter("lsl_params.estimated_states_stream.sampling_rate_hz").value,
+        #         "source_id": self.get_parameter("lsl_params.estimated_states_stream.source_id").value
+        #     }
+        # )
+        # Suffix the outlet name + source_id too, so a robot-side consumer resolves the right pair.
         estimated_states_lsl_stream_info = dict(
             {
-                "name": self.get_parameter("lsl_params.estimated_states_stream.name").value,
+                "name": _suf(self.get_parameter("lsl_params.estimated_states_stream.name").value),
                 "type": self.get_parameter("lsl_params.estimated_states_stream.type").value,
                 "channel": self.get_parameter("lsl_params.estimated_states_stream.channel").value,
                 "outlet_type": self.get_parameter("lsl_params.estimated_states_stream.outlet_type").value,
                 "sampling_rate_hz": self.get_parameter("lsl_params.estimated_states_stream.sampling_rate_hz").value,
-                "source_id": self.get_parameter("lsl_params.estimated_states_stream.source_id").value
+                "source_id": _suf(self.get_parameter("lsl_params.estimated_states_stream.source_id").value)
             }
         )
 
@@ -224,7 +256,7 @@ class WebVisualizerNode(Node):
         # Tells the encoder_reader (Kalman) node to re-zero /estimated_states at the
         # source, so the evaluator + LSL outlet + WS all share one zeroed frame.
         self._zero_estimated_pub = self.create_publisher(Empty, "/zero_estimated_states", qos)
- 
+
         # Also subscribe to these topics so that ANY publisher (our LSL worker
         # OR mock_encoder OR a future robot_controller ROS node) gets
         # broadcast to the WebSocket clients. LSL workers therefore do NOT
@@ -270,6 +302,7 @@ class WebVisualizerNode(Node):
         )
         handler = functools.partial(_SilentHTTPHandler, directory=web_dir)
         self._http_server = http.server.HTTPServer(("0.0.0.0", self._http_port), handler)
+        self._http_server.ws_port = self._ws_port   # exposed to the browser via GET /config.json
         self._http_server.serve_forever()
 
     # ── WebSocket server (asyncio thread) ───────────────────────────────────

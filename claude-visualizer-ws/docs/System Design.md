@@ -1,7 +1,7 @@
 # System Design — claude_visualizer
 
 **Purpose:** Dense technical reference. Re-read this to orient in a new session before touching code.  
-**Last updated:** 2026-05-28
+**Last updated:** 2026-06-26
 
 ---
 
@@ -15,9 +15,9 @@
 | 3 | Reference lines on uPlot charts (target_rad amber dashed lines) | ✅ Complete |
 | 4 | Interactive criteria tab — view and edit pass/fail thresholds live from browser | ✅ Complete |
 | 5 | UI polish: x-axis fix, plot zoom, Pos Sync/Zero server-side, unit toggle, scrollable panel | ✅ Complete |
+| 6 | Multi-pair LAN scaling: single `pair_id` → ROS domain, LSL suffix, web ports | ✅ Complete |
 
-**Current hardware state:** Real Teensy 4.1 encoder connected; mock_encoder commented out
-of bringup.launch.py. Use `mock_robot_controller.py` for sending experiment triggers.
+**Current hardware state:** Real Teensy 4.1 encoder connected; mock_encoder commented out of bringup.launch.py. Use `mock_robot_controller.py` or `mock_ui.py` for sending experiment triggers.
 
 ---
 
@@ -35,13 +35,15 @@ claude_visualizer_ws/
 │   │   │   └── criteria.yaml              # Per-robot evaluation criteria lookup table
 │   │   ├── launch/
 │   │   │   └── bringup.launch.py           # Launches encoder_reader + web_visualizer + experiment_evaluator
+│   │   ├── mock_UI/
+│   │   │   └── mock_ui.py                  # Dev GUI: encoder knob + command sender (Tkinter)
 │   │   ├── scripts/
 │   │   │   ├── mock_encoder.py             # Phase 1: synthetic /encoder_raw (commented out in launch)
 │   │   │   ├── Kalman_filter.py            # encoder_reader node (constant-jerk KF)
 │   │   │   ├── web_visualizer.py           # LSL↔ROS bridge + WS + HTTP server
 │   │   │   ├── mock_robot_controller.py    # Non-ROS LSL publisher; experiment CLI
 │   │   │   └── experiment_evaluator.py     # evaluates /estimated_states vs experiment config
-│   │   ├── web/                            # Browser frontend (served on :8000)
+│   │   ├── web/                            # Browser frontend (served on :http_port)
 │   │   │   ├── index.html
 │   │   │   ├── app.js
 │   │   │   └── style.css
@@ -62,14 +64,23 @@ claude_visualizer_ws/
 │   ├── src/main.cpp
 │   ├── platformio.ini                      # Board: teensy41, framework: arduino
 │   └── MICROROS_NOTES.md
+├── pairs/                                  # Per-pair env files (Phase 6)
+│   ├── pair<N>.env                         # source before running on any machine in the pair
+│   ├── pair11.env                          # example: pair 11
+│   └── pair12.env                          # example: pair 12
+├── scripts/
+│   └── make_pair_env.sh                    # Generator: ./scripts/make_pair_env.sh <N>
 ├── docs/
-│   └── System Design.md                   # ← this file
+│   ├── System Design.md                   # ← this file (Claude agent reference)
+│   └── System Overview.md                 # Human-readable narrative + reasoning
 └── .venv/                                  # Python venv (--system-site-packages)
 ```
 
 ---
 
 ## 2. System Architecture
+
+### Topology (single pair)
 
 ```
 ╔══════════════════════════════════════════════════════════════════════════╗
@@ -94,10 +105,11 @@ claude_visualizer_ws/
                     └──────┬────────────────┘
                            │                           ┌──────────────────────┐
                            │                           │ mock_robot_controller│ (non-ROS)
+                           │                           │ OR mock_ui (tkinter) │
                            │                           │ LSL: ActualStates    │ pos in DEGREES
                            │                           │ LSL: EventTrigger    │ vel/acc in rad/s
                            │                           └──────────┬───────────┘
-                           │                                      │ LSL
+                           │                                      │ LSL (cross-machine transport)
                ┌───────────┼──────────────────────────────────────▼───────────┐
                │           │         web_visualizer (5 threads)                │
                │           ▼                                                   │
@@ -112,7 +124,8 @@ claude_visualizer_ws/
                │                             _actual_pos_offset_rad,          │
                │                             pub /actual_states               │
                │   lsl-event-trigger thread → pub /event_trigger              │
-               │   ws-server (asyncio :9090) + http-server (:8000)            │
+               │   ws-server (asyncio :9000+N) + http-server (:8000+N)        │
+               │   GET /config.json → {"ws_port": N}                          │
                │   srv client /update_criteria → experiment_evaluator         │
                └─────────────────────────────┬────────────────────────────────┘
                                              │
@@ -124,18 +137,26 @@ claude_visualizer_ws/
                     │  pub /eval_summary (on experiment end)        │
                     │  srv server /update_criteria (Phase 4)        │
                     └────────────────────────────────────────────────┘
-                                             │ WebSocket :9090
+                                             │ WebSocket :9000+N
                              ┌───────────────▼───────────────┐
                              │       Browser (app.js)         │
+                             │  fetches /config.json on load  │
                              │  uPlot charts @ 30 Hz          │
                              │  Criteria tab (Phase 4)        │
                              │  Pos Sync / Zero (Phase 5)     │
                              └───────────────────────────────┘
 ```
 
+### Machine topology
+
+**Verifier machine runs the ENTIRE ROS graph:** Teensy 4.1 + micro-ROS agent → `/encoder_raw` → `encoder_reader` → `/estimated_states` → `web_visualizer` + `experiment_evaluator`. Also runs: HTTP file server and WebSocket server.
+
+**Robot machine** (when separate) runs only the robot controller, which emits **LSL** `ActualStates` + `EventTrigger`. No ROS on the robot machine in real deployment.
+
+**Cross-machine transport = LSL only.** All ROS/DDS traffic is local to the verifier machine. `ROS_DOMAIN_ID` isolates each verifier's ROS graph from other verifiers on the LAN; it does NOT cross to the robot machine in a real deployment (harmless to source there if using a ROS-based mock).
+
 **Cross-thread sync:** ROS callbacks → `asyncio.run_coroutine_threadsafe()` → WS loop thread.  
-**Self-loop fanout:** `web_visualizer` publishes `/actual_states` + `/event_trigger` via LSL workers,
-then also subscribes to both — subscription callbacks do the WS broadcast.
+**Self-loop fanout:** `web_visualizer` publishes `/actual_states` + `/event_trigger` via LSL workers, then also subscribes to both — subscription callbacks do the WS broadcast.
 
 ---
 
@@ -179,6 +200,7 @@ string  event               # Full JSON payload string. ALWAYS contains key "act
 **IMPORTANT:** `msg.event` is the complete JSON string — not a short type tag.
 Parse with `json.loads(msg.event)`. Dispatch on `payload["action"]`.
 Stop condition: `payload["mode"] == "STOP"` or `payload["action"] == "stop"`.
+`pick_place` payload uses key `"order_sequence"` (not `"sequence"`).
 
 ### `ExperimentEval`
 ```
@@ -206,10 +228,10 @@ Empty `criteria_json` (`"{}"`) is a valid read-only snapshot request — returns
 
 | Topic               | Type              | Producer                         | Consumer(s)                          |
 |---------------------|-------------------|----------------------------------|--------------------------------------|
-| `/encoder_raw`      | `EncoderRaw`      | Teensy firmware / mock_encoder   | `encoder_reader`                     |
+| `/encoder_raw`      | `EncoderRaw`      | Teensy firmware / mock_encoder / **mock_ui** | `encoder_reader`                     |
 | `/estimated_states` | `EncoderState`    | `encoder_reader`                 | `web_visualizer`, `experiment_evaluator` |
 | `/actual_states`    | `ActualStates`    | `web_visualizer` (LSL inlet)     | `web_visualizer` (self-loop → WS)    |
-| `/event_trigger`    | `EventTrigger`    | `web_visualizer` (LSL inlet)     | `web_visualizer` (self-loop → WS), `experiment_evaluator` |
+| `/event_trigger`    | `EventTrigger`    | `web_visualizer` (LSL inlet) / **mock_ui** (direct ROS2) | `web_visualizer` (self-loop → WS), `experiment_evaluator` |
 | `/eval_live`        | `ExperimentEval`  | `experiment_evaluator`           | `web_visualizer` (→ WS broadcast)    |
 | `/eval_summary`     | `ExperimentEval`  | `experiment_evaluator`           | `web_visualizer` (→ WS broadcast)    |
 
@@ -228,11 +250,16 @@ QoS on all topics: `RELIABLE`, `KEEP_LAST`, depth=10.
 | Stream name       | Direction | Format    | Channels | Rate      | Producer                  |
 |-------------------|-----------|-----------|----------|-----------|---------------------------|
 | `EstimatedStates` | outlet    | float32   | 3        | 500 Hz    | `web_visualizer`          |
-| `ActualStates`    | inlet     | float32   | 3        | 500 Hz    | `mock_robot_controller`   |
-| `EventTrigger`    | inlet     | string    | 1        | IRREGULAR | `mock_robot_controller`   |
+| `ActualStates`    | inlet     | float32   | 3        | 500 Hz    | `mock_robot_controller` / `mock_ui` |
+| `EventTrigger`    | inlet     | string    | 1        | IRREGULAR | `mock_robot_controller` / `mock_ui` |
 
 **Unit conventions for `ActualStates`:** position channel is in **degrees**; velocity in rad/s; acceleration in rad/s².  
 `web_visualizer._actual_states_worker` converts position with `* _DEG_TO_RAD` and subtracts `_actual_pos_offset_rad` before publishing to `/actual_states`.
+
+**Multi-pair suffix (Phase 6):** When `pair_id = N ≠ 0`, **stream name AND source_id** both get suffix `_N` (e.g. `ActualStates_11`, `EventTrigger_11`). This suffix must be consistent across ALL three producers for a given pair:
+- verifier: `web_visualizer` `session` launch param → `_suf()` applied in code
+- robot mock: `CV_PAIR_ID` env var / `--pair-id` CLI arg → suffix applied before `create_outlet()`
+- `_resolve_stream` grabs `streams[0]` — the unique name+source_id suffix ensures it finds the correct pair's stream
 
 `utils.py:create_outlet()` is the shared factory for all LSL outlets.
 
@@ -240,7 +267,11 @@ QoS on all topics: `RELIABLE`, `KEEP_LAST`, depth=10.
 
 ## 6. WebSocket Protocol
 
-**Port:** 9090 | **Format:** newline-delimited JSON text frames
+**Port:** `9000 + pair_id` (default `9090` when `pair_id = 0`)  
+**HTTP port:** `8000 + pair_id` (default `8000` when `pair_id = 0`)  
+**Format:** newline-delimited JSON text frames
+
+**Port discovery (Phase 6):** Browser fetches `GET /config.json` from the HTTP server on page load. Response: `{"ws_port": N}`. `app.js` uses this port to open the WebSocket instead of a hardcoded value. This decouples the browser from knowing the port at build time.
 
 ### Server → Browser
 
@@ -268,6 +299,13 @@ QoS on all topics: `RELIABLE`, `KEEP_LAST`, depth=10.
 | `pos_sync`         | `delta_rad` | Server adds `delta_rad` to `_actual_pos_offset_rad`; future actual positions shift |
 | `zero_set`         | `act_rad`   | Server sets `_est_zero_rad = last_est_pos`, adds `act_rad` to `_actual_pos_offset_rad`, broadcasts `zero_ack` |
 
+### HTTP Endpoints
+
+| Path | Method | Response | Notes |
+|------|--------|----------|-------|
+| `/config.json` | GET | `{"ws_port": N}` | Served by `_SilentHTTPHandler.do_GET`; injected port from `self.server.ws_port` |
+| `/*` | GET | static file | Falls through to `http.server.SimpleHTTPRequestHandler.do_GET` |
+
 ---
 
 ## 7. Node Reference
@@ -282,9 +320,26 @@ QoS on all topics: `RELIABLE`, `KEEP_LAST`, depth=10.
 - **Subscribes:** `/estimated_states`, `/actual_states`, `/event_trigger`, `/eval_live`, `/eval_summary`
 - **Publishes:** `/actual_states`, `/event_trigger`
 - **Service client:** `/update_criteria` (async call inside WS handler)
-- **LSL outlet:** `EstimatedStates` (3 × float32)
-- **LSL inlets:** `ActualStates` (float), `EventTrigger` (string/JSON)
+- **LSL outlet:** `EstimatedStates` (3 × float32) — name + source_id suffixed by `_suf()` when session set
+- **LSL inlets:** `ActualStates` (float), `EventTrigger` (string/JSON) — resolved by suffixed name
 - **Serializers:** `estimated_states_to_json`, `actual_states_to_json`, `event_trigger_to_json`, `_eval_to_json`
+
+**Parameters (Phase 6 additions):**
+- `session` (string, default `""`) — suffix token; `_suf = (lambda n: f"{n}_{session}") if session else (lambda n: n)` — applied to all LSL stream names + source_ids
+- `ws_port` — set by launch to `9000+N` (or 9090)
+- `http_port` — set by launch to `8000+N` (or 8000)
+- `ws_host` — default `"0.0.0.0"` (listens on all interfaces)
+
+**`/config.json` wiring:**
+```python
+# in _run_http_server:
+self._http_server.ws_port = self._ws_port   # inject port onto server object
+
+# in _SilentHTTPHandler.do_GET:
+if self.path == "/config.json":
+    body = json.dumps({"ws_port": self.server.ws_port}).encode()
+    ...
+```
 
 **Position offset state (Phase 5):**
 ```python
@@ -301,7 +356,7 @@ self._last_est_pos_rad      = 0.0   # updated each _estimated_states_cb; used by
 - `_broadcast` / `_broadcast_async`: thread-safe WS fanout; caches last message per topic
 
 ### `experiment_evaluator` (`scripts/experiment_evaluator.py`)
-- **Parameters:** `robot_id` (default: `"default"`), `criteria_file_path`
+- **Parameters:** `pair_id` (default: `"0"`), `criteria_file_path` — `pair_id` selects the criteria row (replaces the old `robot_id`)
 - **Subscribes:** `/event_trigger`, `/estimated_states`
 - **Publishes:** `/eval_live` (throttled every 0.1 s), `/eval_summary` (on finish)
 - **Service server:** `/update_criteria` — validates key names and non-negative values; updates `self._criteria` in-place; changes are in-memory only (lost on restart)
@@ -311,19 +366,41 @@ self._last_est_pos_rad      = 0.0   # updated each _estimated_states_cb; used by
 - **Variable naming:** all variables carry unit suffixes (`_rad`, `_rad_s`, `_rad_s2`, `_s`, `_pct`, `_count`)
 - **ptp summary:** reports `final_error_rad` (error at finish) instead of `max_error`
 - **performance:** `cmd_speed_rad_s` and `cmd_accel_rad_s2` taken from payload first, then criteria as fallback
+- **`pick_place` payload key:** reads `payload["order_sequence"]` — senders must use this key (not `"sequence"`)
 - See §8 for full experiment logic.
+
+### `mock_ui` (`mock_UI/mock_ui.py`)
+- **Tkinter GUI** combining mock encoder knobs + LSL/ROS2 event sender. Developer tool for testing the full pipeline without real hardware or a robot controller.
+- **ROS2 publishers:** `/encoder_raw` (EncoderRaw), `/event_trigger` (EventTrigger)
+- **LSL outlets:** `ActualStates` (3 × float32, 50 Hz), `EventTrigger` (1 × string, IRREGULAR)
+- **Two knobs:** Encoder knob → drives `/encoder_raw`; ActualStates knob → drives LSL `ActualStates`
+- **Sync mode:** when ON, the ActualStates knob follows the encoder knob's *rate of change* (not absolute position)
+- **Fine / Rough mode:** toggles drag sensitivity between 0.1 deg/px (fine) and 1.0 deg/px (rough)
+- **Control direction:** drag up = anticlockwise (negative), drag down = clockwise (positive)
+- **Readout:** both knobs display rad and deg simultaneously
+- **Command entry:** same ptp/pp/perf/prec/stop command syntax as `mock_robot_controller` — publishes to both LSL EventTrigger and ROS2 `/event_trigger`
+- **`TICKS_PER_REV`:** 4096 (matches Teensy firmware)
+- **Phase 6:** reads `CV_PAIR_ID` env / `--pair-id` CLI; `_pair_suffix()` helper appends `_N` to LSL name + source_id before `create_outlet()`
+
+**`_pair_suffix()` pattern (shared by mock_ui and mock_robot_controller):**
+```python
+def _pair_suffix(pair_id=None) -> str:
+    pid = str(pair_id if pair_id is not None else os.environ.get("CV_PAIR_ID", "")).strip()
+    return f"_{pid}" if pid and pid != "0" else ""
+```
 
 ### `mock_robot_controller` (`scripts/mock_robot_controller.py`)
 - **NOT a ROS node.** Pure Python + pylsl. Run separately.
 - **LSL outlets:** `ActualStates` (3 × float32, REGULAR), `EventTrigger` (1 × string, IRREGULAR)
 - **Telemetry:** continuous waveform (trapezoid/sine/step) in background thread
 - **Unit output:** position sent in **degrees** (`math.degrees(p)`); velocity and acceleration in rad/s and rad/s² (numerical derivatives of raw radian waveform — not converted)
+- **Phase 6:** reads `CV_PAIR_ID` env / `--pair-id` CLI; appends suffix to YAML-loaded `name` and `source_id` before `create_outlet()`
 - **CLI commands:**
 
 | Command | Parameters | Example | JSON sent |
 |---|---|---|---|
 | `ptp <value> <unit>` | `value`: increment in `unit`; `unit`: `index` \| `degree` \| `rad` | `ptp 5 index` | `{mode:"Auto", action:"point_to_point", value:5.0, unit:"index"}` |
-| `pp <n> <seq> <dirs> <gripper>` | `n`: waypoint count; `seq`: comma-sep integers [index]; `dirs`: comma-sep `CW`\|`CCW`; `gripper`: `true`\|`false` | `pp 3 0,36,72 CW,CCW,CW true` | `{mode:"Auto", action:"pick_place", num:3, sequence:[0,36,72], directions:["CW","CCW","CW"], use_gripper:true}` |
+| `pp <n> <seq> <dirs> <gripper>` | `n`: waypoint count; `seq`: comma-sep integers [index]; `dirs`: comma-sep `CW`\|`CCW`; `gripper`: `true`\|`false` | `pp 3 0,36,72 CW,CCW,CW true` | `{mode:"Auto", action:"pick_place", num:3, order_sequence:[0,36,72], directions:["CW","CCW","CW"], use_gripper:true}` |
 | `perf <speed> <accel>` | `speed` [rad/s]; `accel` [rad/s²] | `perf 1.0 2.0` | `{mode:"Test", action:"performance", speed:1.0, accel:2.0}` |
 | `prec <init> <tar> <repeat> <unit>` | `init`, `tar`: positions in `unit`; `repeat`: trial count (integer); `unit`: `index` \| `degree` | `prec 0 36 10 index` | `{mode:"Test", action:"precision", init_pos:0, tar_pos:36, repeat:10, unit:"index"}` |
 | `stop` | — | — | `{mode:"STOP", action:"stop"}` |
@@ -362,9 +439,10 @@ band = max(SETTLING_THRESHOLD, criteria["settling_band_pct"] / 100.0 × |travel|
 
 #### `pick_place`
 ```json
-{"mode":"Auto","action":"pick_place","num":3,"sequence":[0,36,72],"directions":["CW","CCW","CW"],"use_gripper":true}
+{"mode":"Auto","action":"pick_place","num":3,"order_sequence":[0,36,72],"directions":["CW","CCW","CW"],"use_gripper":true}
 ```
-- Waypoints: `sequence[idx] × RAD_PER_INDEX` (absolute, index units)
+- **Key name:** `"order_sequence"` (NOT `"sequence"`)
+- Waypoints: `order_sequence[idx] × RAD_PER_INDEX` (absolute, index units)
 - Terminates: **auto** after settling at waypoint `num-1`, or explicit stop
 - eval_summary: `total_waypoints`, `avg_error_rad`, `pass_avg_error`, `passed`, `failed`, `details[]`
 
@@ -384,7 +462,7 @@ band = max(SETTLING_THRESHOLD, criteria["settling_band_pct"] / 100.0 × |travel|
 - eval_summary: `target_rad`, `num_trials`, `mean_error_rad`, `std_error_rad`, `max_error_rad`, `pass_error`
 
 ### Criteria (`config/criteria.yaml`)
-Keyed by `robot_id` launch arg. Falls back to `"default"`.
+Keyed by `pair_id` (the launch arg / `CV_PAIR_ID`). Rows are pair numbers (e.g. `11`, `12`) plus a `default` fallback used for `pair_id` 0 or any unlisted pair. The loader normalizes keys to strings, so `11:` (int) and `"11":` (str) both match.
 
 | Key | Used by | Meaning |
 |---|---|---|
@@ -408,8 +486,10 @@ Single source for all ROS node params. Key entries:
 |---|---|---|---|
 | `encoder_reader` | `kf_q_position` | 0.001 | Process noise — tune for lag vs noise |
 | `encoder_reader` | `kf_r_position` | 0.5 | Measurement noise — higher = smoother |
-| `web_visualizer` | `ws_port` | 9090 | WebSocket port |
-| `web_visualizer` | `http_port` | 8000 | HTTP file server port |
+| `web_visualizer` | `ws_port` | 9090 | WebSocket port; launch overrides to `9000+N` |
+| `web_visualizer` | `http_port` | 8000 | HTTP file server port; launch overrides to `8000+N` |
+| `web_visualizer` | `ws_host` | `"0.0.0.0"` | WS listen address |
+| `web_visualizer` | `session` | `""` | LSL stream name suffix token; launch sets to `str(N)` |
 | `web_visualizer` | `lsl_params.resolve_timeout_s` | 5.0 | LSL stream lookup timeout |
 | `mock_robot_controller` | `lsl_params.actual_states_stream.sampling_rate_hz` | 500.0 | |
 | `mock_robot_controller` | `waveform_config.type` | `"trapezoid"` | `sine` \| `trapezoid` \| `step` |
@@ -417,8 +497,8 @@ Single source for all ROS node params. Key entries:
 | `mock_robot_controller` | `waveform_config.trap_acceleration` | π/2 | [rad/s²] |
 
 ### `config/criteria.yaml`
-Per-robot evaluation criteria. Edit directly to change pass/fail thresholds.
-Launch with `robot_id:=robot_A` (or any key in the file) to select a row.
+Per-pair evaluation criteria. Edit directly to change pass/fail thresholds.
+Launch with `pair_id:=11` (or any pair number / key in the file) to select a row; `pair_id` 0 or an unlisted pair uses `default`.
 
 ---
 
@@ -442,6 +522,23 @@ Launch with `robot_id:=robot_A` (or any key in the file) to select a row.
 
 ### Redraw loop
 `setInterval(redraw, 1000/30)` — 30 Hz, decoupled from WS rate. Updates live plots, profile plots, and zoom plots every tick using current `pScale` (rad or deg). This ensures unit-toggle changes are reflected in all panels without re-cropping.
+
+### Phase 6: WS port discovery
+`app.js` calls `resolveWsUrl()` on page load before `connect()`:
+```js
+async function resolveWsUrl() {
+    try {
+        const resp = await fetch("/config.json", { cache: "no-store" });
+        const cfg  = await resp.json();
+        if (cfg && cfg.ws_port) {
+            WS_URL = `ws://${location.hostname || "localhost"}:${cfg.ws_port}`;
+        }
+    } catch (_) { /* keep fallback WS_URL = ws://...:9090 */ }
+    document.getElementById("ws-url").textContent = WS_URL;
+}
+resolveWsUrl().then(connect);
+```
+`location.hostname` automatically resolves to the verifier machine's host (same host that served the page), so the WS connects to the right machine without hardcoding an IP.
 
 ### State object (key fields)
 ```javascript
@@ -519,8 +616,10 @@ Two independent buttons:
 
 ## 12. Build & Run
 
+### Standard (single pair)
+
 ```bash
-source /opt/ros/<distro>/setup.bash
+source /opt/ros/jazzy/setup.bash
 source .venv/bin/activate
 
 # Build (interface first if .srv changed, then main package)
@@ -529,8 +628,8 @@ source install/setup.bash
 
 # Launch pipeline (real encoder)
 ros2 launch claude_visualizer bringup.launch.py
-# With specific robot criteria:
-ros2 launch claude_visualizer bringup.launch.py robot_id:=robot_A
+# With a specific pair's criteria (also sets ports/LSL suffix):
+ros2 launch claude_visualizer bringup.launch.py pair_id:=11
 
 # Mock controller (separate terminal — not a ROS node, no sourcing needed)
 ros2 run claude_visualizer mock_robot_controller
@@ -538,14 +637,53 @@ ros2 run claude_visualizer mock_robot_controller
 
 # Browser (hard-refresh after any web/ file change — no build needed for CSS/JS/HTML)
 # http://localhost:8000
-
-# Verify evaluator output
-ros2 topic echo /eval_live
-ros2 topic echo /eval_summary
 ```
 
+### Multi-pair (Phase 6)
+
+```bash
+# Generate env file for pair N (run once per pair number)
+./scripts/make_pair_env.sh 11    # creates pairs/pair11.env
+
+# --- On VERIFIER machine (runs full ROS graph + web server) ---
+source /opt/ros/jazzy/setup.bash
+source .venv/bin/activate
+source pairs/pair11.env          # sets ROS_DOMAIN_ID=11, CV_PAIR_ID=11
+source install/setup.bash
+ros2 launch claude_visualizer bringup.launch.py
+# WS on :9011, HTTP on :8011, LSL stream names suffixed _11
+
+# --- On ROBOT machine (LSL source only) ---
+source pairs/pair11.env          # sets CV_PAIR_ID=11 (ROS_DOMAIN_ID harmless if no ROS)
+python3 src/claude_visualizer/scripts/mock_robot_controller.py
+# OR if the mock_ui is on a ROS-enabled machine:
+# source /opt/ros/jazzy/setup.bash && source install/setup.bash
+# python3 src/claude_visualizer/mock_UI/mock_ui.py
+
+# Browser: http://<verifier-ip>:8011   (app.js fetches /config.json to get ws_port=9011)
+
+# --- Pair stream name verification ---
+python3 -c "
+pair=11
+print('ws_port:', 9000+pair, 'http_port:', 8000+pair)
+print('LSL names: ActualStates_11, EventTrigger_11, EstimatedStates_11')
+"
+```
+
+### Port derivation table
+
+| pair_id | ROS_DOMAIN_ID | ws_port | http_port | LSL suffix |
+|---------|--------------|---------|-----------|------------|
+| 0 (unset) | 0 | 9090 | 8000 | (none) |
+| 1 | 1 | 9001 | 8001 | `_1` |
+| 11 | 11 | 9011 | 8011 | `_11` |
+| 12 | 12 | 9012 | 8012 | `_12` |
+| 101 | 101 | 9101 | 8101 | `_101` |
+
+`ROS_DOMAIN_ID` safe range: **0–101** (ports 7400–7680; outside this range DDS has port collisions).
+
 **Launch args:**
-- `robot_id` (default: `"default"`) — selects criteria row in `criteria.yaml`
+- `pair_id` (default: from `CV_PAIR_ID` env, else `"0"`) — single setup identifier: derives ports + LSL suffix (Phase 6) **and** selects the criteria row in `criteria.yaml` (replaces the old `robot_id`)
 - `waveform` (default: `"trapezoid"`) — for mock_encoder if re-enabled
 
 **Build notes:**
@@ -555,25 +693,82 @@ ros2 topic echo /eval_summary
 
 ---
 
-## 13. Known Issues
+## 13. Multi-Pair LAN Scaling (Phase 6)
+
+### Problem
+Running N robot+verifier pairs on one LAN causes three independent collision risks:
+1. **ROS 2 / DDS:** All pairs on domain 0 receive each other's `/estimated_states`, `/event_trigger`, etc. — evaluator gets wrong data.
+2. **LSL:** `_resolve_stream(name)` grabs `streams[0]` from any stream with that name on the LAN — verifier latches onto the wrong robot's telemetry.
+3. **Web ports:** Two `web_visualizer` nodes on the same host cannot both bind to `:9090` / `:8000` — second launch fails.
+
+### Solution: single `pair_id = N` → three-layer derivation
+
+```python
+# bringup.launch.py — _derive_pair()
+def _derive_pair(pair_id: int):
+    if pair_id:
+        return 9000 + pair_id, 8000 + pair_id, str(pair_id)
+    return 9090, 8000, ""
+```
+
+| Layer | Derivation | Scope |
+|---|---|---|
+| ROS 2 | `ROS_DOMAIN_ID = N` (exported before launch) | verifier machine only |
+| LSL | stream name + source_id get suffix `_N` | both machines |
+| Web | `ws_port = 9000+N`, `http_port = 8000+N` | verifier machine |
+
+### Env file (`pairs/pair<N>.env`)
+```bash
+export ROS_DOMAIN_ID=11   # verifier: isolates local ROS graph; harmless on pure-LSL robot box
+export CV_PAIR_ID=11      # both machines: LSL suffix _11 — the cross-machine isolator
+```
+Generated by `./scripts/make_pair_env.sh <N>`. **Source before any `ros2` command or mock script.**
+
+### Component wiring
+
+| Component | How it reads pair_id | What it does with it |
+|---|---|---|
+| `bringup.launch.py` | `CV_PAIR_ID` env → `pair_id` launch arg | Computes ws/http ports + session; passes as param overrides to `web_visualizer` |
+| `web_visualizer.py` | `session` ROS param (set by launch) | `_suf()` appends `_{session}` to all LSL names + source_ids |
+| `mock_robot_controller.py` | `CV_PAIR_ID` env / `--pair-id` CLI | Mutates YAML-loaded stream cfg before `create_outlet()` |
+| `mock_ui.py` | `CV_PAIR_ID` env / `--pair-id` CLI | `_pair_suffix()` → mutates ACTUAL_STATES_CFG / EVENT_TRIGGER_CFG |
+| `app.js` | fetches `/config.json` → `ws_port` | Opens WS to `ws://${location.hostname}:${ws_port}` |
+
+### Backward compatibility
+`pair_id = 0` or unset → no suffix, ports `9090`/`8000`, `ROS_DOMAIN_ID=0`. All existing single-pair workflows unchanged.
+
+### Verification (expected stream names)
+```
+pair=0   ws=9090 http=8000 | ActualStates / EventTrigger / EstimatedStates
+pair=11  ws=9011 http=8011 | ActualStates_11 / EventTrigger_11 / EstimatedStates_11
+pair=101 ws=9101 http=8101 | ActualStates_101 / EventTrigger_101 / EstimatedStates_101
+```
+
+---
+
+## 14. Known Issues
 
 | Location | Issue | Severity |
 |---|---|---|
 | `encoder_data_publisher/src/main.cpp` | `dt_us` hardcoded to 10000 — not measured from actual timer elapsed | Known |
 | `web_visualizer.py` `_actual_pos_offset_rad` | Cumulative offset; not reset on WS reconnect or node restart — operator must press Pos Sync again after restart | Known |
 | `criteria_update` (Phase 4) | Changes are in-memory only — lost on `experiment_evaluator` restart | By design |
+| `web_visualizer.py` `_resolve_stream` | If LSL stream not found within `resolve_timeout_s`, node prints error but continues — no retry loop | Known |
 
 ---
 
-## 14. Dependencies
+## 15. Dependencies
 
 ### Python (pip, venv)
 | Package | Used by |
 |---|---|
-| `pylsl` | `web_visualizer.py`, `mock_robot_controller.py` |
+| `pylsl` | `web_visualizer.py`, `mock_robot_controller.py`, `mock_ui.py` |
 | `websockets` | `web_visualizer.py` |
 | `numpy` | `mock_encoder.py`, `Kalman_filter.py` |
 | `PyYAML` | `mock_robot_controller.py`, `experiment_evaluator.py` |
+| `catkin-pkg` | ROS 2 build tooling (required in venv) |
+| `empy` | ROS 2 build tooling (required in venv) |
+| `lark` | ROS 2 build tooling (required in venv) |
 
 ### ROS 2
 `rclcpp`, `rclpy`, `std_msgs`, `builtin_interfaces`, `rosidl_default_generators`

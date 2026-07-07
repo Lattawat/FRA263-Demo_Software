@@ -1,5 +1,8 @@
 criteria:
-  robot_A:
+  # Keyed by pair_id (the single setup identifier). Re-keyed from the old
+  # robot_A / robot_B names — pair_id replaces robot_id. The loader normalizes
+  # keys to strings, so 11: (int) and "11": (str) both match pair_id 11.
+  11:                            # was robot_A
     min_speed:            1.0    # [rad/s]  performance: peak_vel must exceed this
     min_acceleration:     2.0    # [rad/s²] performance: peak_acc must exceed this
     max_avg_error_rad:    0.05   # [rad]    point_to_point / pick_place / precision
@@ -7,7 +10,7 @@ criteria:
     max_settling_time_s:  2.0    # [s]      timed from first entry into settling band
     settling_band_pct:    3.0    # [%]      of travel; defines the error band for settling detection
 
-  robot_B:
+  12:                            # was robot_B
     min_speed:            0.8
     min_acceleration:     1.5
     max_avg_error_rad:    0.08
@@ -15,7 +18,7 @@ criteria:
     max_settling_time_s:  3.0
     settling_band_pct:    3.0
 
-  default:                       # fallback when robot_id not in table
+  default:                       # fallback when pair_id not in table (incl. pair_id 0 / legacy)
     min_speed:            3.0
     min_acceleration:     4.0
     max_avg_error_rad:    0.1

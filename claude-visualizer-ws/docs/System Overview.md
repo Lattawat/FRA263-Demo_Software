@@ -1,6 +1,6 @@
-# claude_visualizer
+# claude_visualizer — System Overview
 
-A ROS 2 pipeline that streams Kalman-filtered encoder kinematics and robot-controller telemetry into a browser dashboard via **LSL (Lab Streaming Layer)** and a built-in **WebSocket** server. Currently running in *Phase-1 / Phase-2* mode with software mocks standing in for the Teensy 4.1 encoder and the real robot controller.
+A ROS 2 pipeline that streams Kalman-filtered encoder kinematics and robot-controller telemetry into a browser dashboard via **LSL (Lab Streaming Layer)** and a built-in **WebSocket** server. All development phases (1–6) are complete and running with a real Teensy 4.1 encoder. `mock_ui.py` and `mock_robot_controller.py` stand in for the robot controller during testing. Phase 6 adds multi-pair LAN scaling so that multiple robot-verifier pairs can run simultaneously on the same network.
 
 ---
 
@@ -9,227 +9,309 @@ A ROS 2 pipeline that streams Kalman-filtered encoder kinematics and robot-contr
 ```
 claude_visualizer_ws/
 ├── src/
-│   ├── claude_visualizer/              # Main ROS 2 package (ament_cmake)
-│   │   ├── claude_visualizer/          # Python package (ament-installed)
+│   ├── claude_visualizer/                  # Main ROS 2 package (ament_cmake)
+│   │   ├── claude_visualizer/              # Python package (ament-installed)
+│   │   │   ├── __init__.py
+│   │   │   └── utils.py                    # create_outlet() — shared LSL outlet factory
 │   │   ├── config/
-│   │   │   └── params.yaml             # All node parameters
-│   │   ├── include/claude_visualizer/  # C++ headers
+│   │   │   ├── params.yaml                 # All node parameters (single source of truth)
+│   │   │   └── criteria.yaml              # Per-robot evaluation criteria lookup table
 │   │   ├── launch/
-│   │   │   └── bringup.launch.py       # Full-pipeline launch
+│   │   │   └── bringup.launch.py           # Launches encoder_reader + web_visualizer + experiment_evaluator
+│   │   ├── mock_UI/
+│   │   │   └── mock_ui.py                  # Tkinter GUI: knob encoder + command sender (dev tool)
 │   │   ├── scripts/
-│   │   │   ├── mock_encoder.py             # Phase-1 synthetic encoder (ROS node)
-│   │   │   ├── Kalman_filter.py            # encoder_reader (ROS node, KF)
-│   │   │   ├── web_visualizer.py           # LSL↔ROS bridge + WebSocket server
-│   │   │   └── mock_robot_controller.py    # Non-ROS LSL publisher (Phase-2 stand-in)
-│   │   ├── src/
-│   │   │   └── cpp_node.cpp            # C++ example node
+│   │   │   ├── mock_encoder.py             # Phase 1: synthetic /encoder_raw (commented out in launch)
+│   │   │   ├── Kalman_filter.py            # encoder_reader node (constant-jerk KF)
+│   │   │   ├── web_visualizer.py           # LSL↔ROS bridge + WS + HTTP server (5 threads)
+│   │   │   ├── mock_robot_controller.py    # Non-ROS LSL publisher; experiment CLI
+│   │   │   └── experiment_evaluator.py     # Evaluates /estimated_states vs experiment config
+│   │   ├── web/                            # Browser frontend (served on :http_port)
+│   │   │   ├── index.html
+│   │   │   ├── app.js
+│   │   │   └── style.css
 │   │   ├── CMakeLists.txt
 │   │   └── package.xml
-│   └── claude_visualizer_interface/    # Custom msg package
+│   └── claude_visualizer_interface/        # Custom ROS 2 message + service definitions
 │       ├── msg/
 │       │   ├── EncoderRaw.msg
 │       │   ├── EncoderState.msg
-│       │   ├── RobotTelemetry.msg
-│       │   └── MotionTrigger.msg
+│       │   ├── ActualStates.msg
+│       │   ├── EventTrigger.msg
+│       │   └── ExperimentEval.msg
+│       ├── srv/
+│       │   └── UpdateCriteria.srv
 │       ├── CMakeLists.txt
 │       └── package.xml
-├── web/                                # Browser frontend (static)
-│   ├── index.html
-│   ├── app.js
-│   └── style.css
-├── build/    install/    log/          # colcon artefacts (git-ignored)
-└── .venv/                              # Python virtualenv (--system-site-packages)
+├── encoder_data_publisher/                 # Teensy 4.1 firmware (PlatformIO)
+│   ├── src/main.cpp
+│   └── platformio.ini
+├── pairs/                                  # Per-pair environment files (Phase 6)
+│   ├── pair11.env                          # example: source this for pair 11
+│   └── pair12.env                          # example: source this for pair 12
+├── scripts/
+│   └── make_pair_env.sh                    # Generates pairs/pair<N>.env from N
+├── docs/
+│   ├── System Overview.md                  # ← this file (human guide)
+│   └── System Design.md                   # Dense technical reference for developers/AI
+└── .venv/                                  # Python venv (--system-site-packages)
 ```
 
 ---
 
 ## System Diagram
 
-```mermaid
-flowchart LR
-    subgraph MOCKS["Phase-1 / Phase-2 Mocks"]
-        ME["mock_encoder.py<br/>(ROS 2 node)<br/>replaces Teensy 4.1<br/>sine/trap/step @ 500 Hz"]
-        MRC["mock_robot_controller.py<br/>(Non-ROS, pylsl)<br/>sine/trap/step @ 500 Hz<br/>CLI: start/stop/quit"]
-    end
-
-    subgraph ROS["ROS 2 Graph"]
-        KF["encoder_reader<br/>(Kalman_filter.py)<br/>constant-jerk KF"]
-        WV["web_visualizer<br/>4 threads:<br/>main · ws-server ·<br/>lsl-telemetry · lsl-markers<br/>+ WebSocket :9090"]
-    end
-
-    subgraph LSL["LSL (Lab Streaming Layer)"]
-        OUT_ES["outlet:<br/>EncoderState"]
-        IN_RT["inlet:<br/>RobotTelemetry"]
-        IN_MM["inlet:<br/>MotionMarkers"]
-    end
-
-    subgraph WEB["Web Frontend (web/)"]
-        HS["python3 -m http.server :8000<br/>(serves index.html, app.js, style.css)"]
-        BR["Browser<br/>uPlot @ 30 Hz"]
-    end
-
-    ME -->|"/encoder_raw"| KF
-    KF -->|"/encoder_state"| WV
-
-    WV -.->|"push_sample<br/>[pos, vel, acc]"| OUT_ES
-    MRC -.->|"push_sample<br/>[cmd_p, cmd_v, cmd_a]"| IN_RT
-    MRC -.->|"push_sample<br/>JSON marker"| IN_MM
-
-    IN_RT -.->|"pull_sample →<br/>publish /robot_telemetry"| WV
-    IN_MM -.->|"pull_sample →<br/>publish /motion_trigger"| WV
-
-    WV -->|"sub /robot_telemetry<br/>(self-loop fanout)"| WV
-    WV -->|"sub /motion_trigger<br/>(self-loop fanout)"| WV
-
-    HS -->|"HTTP GET<br/>:8000"| BR
-    BR ==>|"WebSocket :9090<br/>JSON {topic, data}"| WV
-    WV ==>|"broadcast JSON<br/>encoder_state ·<br/>robot_telemetry ·<br/>motion_trigger"| BR
 ```
-
-Legend: solid arrow = ROS topic (DDS) or HTTP, dashed = LSL push/pull, thick = WebSocket frames.
-
-**Notes on the current system:**
-- The bridge runs **four threads**: the ROS executor (main), an asyncio loop for the WebSocket server, and one blocking worker per LSL inlet. Cross-thread hand-off uses `asyncio.run_coroutine_threadsafe`.
-- The bridge **subscribes to its own published topics** (`/robot_telemetry`, `/motion_trigger`) so any future ROS publisher of those topics is also broadcast to the browser — the LSL workers do not call `_broadcast` directly.
-- `mock_robot_controller.py` is **not** in `bringup.launch.py`; it must be started in a separate terminal.
-- The static frontend is served on a **different port** (`:8000`) by a separate process; the bridge only owns the WebSocket port (`:9090`).
-- New WebSocket clients receive a **catch-up snapshot** (the cached most-recent message for each topic) on connect.
-
-For a deep dive into the bridge's API, threading model, and the end-to-end sample journey, see [docs/web_visualizer_tutorial.md](docs/web_visualizer_tutorial.md).
+╔═══════════════════════════════════════════════════╗
+║  HARDWARE (on Verifier machine)                   ║
+║  Teensy 4.1 + quadrature encoder (4096 ticks/rev) ║
+║  micro-ROS over USB serial → /encoder_raw @ 100Hz ║
+╚══════════════════════╦════════════════════════════╝
+                       ║   (mock_encoder.py or mock_ui replaces this during dev)
+           ┌───────────▼───────────┐
+           │     /encoder_raw      │  EncoderRaw
+           └───────────┬───────────┘
+                       │
+           ┌───────────▼───────────┐
+           │    encoder_reader     │  Kalman_filter.py
+           │  (constant-jerk KF)   │
+           └───────────┬───────────┘
+                       │
+           ┌───────────▼───────────┐
+           │  /estimated_states    │  EncoderState
+           └──────┬────────────────┘
+                  │                   ┌─────────────────────────────────────┐
+                  │                   │  Robot machine (may be same or      │
+                  │                   │  different physical machine)        │
+                  │                   │                                     │
+                  │                   │  mock_robot_controller (non-ROS)    │
+                  │                   │  OR mock_ui (Tkinter GUI)           │
+                  │                   │                                     │
+                  │                   │  LSL: ActualStates[_N]  (pos=deg)   │
+                  │                   │  LSL: EventTrigger[_N]  (JSON)      │
+                  │                   │  ROS2: /event_trigger   (mock_ui)   │
+                  │                   └──────────────┬──────────────────────┘
+                  │                                  │ LSL over LAN (only cross-machine link)
+      ┌───────────┼──────────────────────────────────▼──────────────┐
+      │           │        web_visualizer (5 threads)                │
+      │           │        [All on Verifier machine]                 │
+      │           ▼                                                  │
+      │   sub /estimated_states → LSL EstimatedStates[_N] outlet    │
+      │                         → WS broadcast estimated_states      │
+      │   sub /actual_states    → WS broadcast actual_states         │
+      │   sub /event_trigger    → WS broadcast event_trigger         │
+      │   sub /eval_live        → WS broadcast eval_live             │
+      │   sub /eval_summary     → WS broadcast eval_summary          │
+      │   lsl-actual-states thread → deg→rad, offset, pub /actual_states │
+      │   lsl-event-trigger thread → pub /event_trigger              │
+      │   ws-server (asyncio :9000+N)                                │
+      │   http-server (:8000+N) serves web/ + /config.json           │
+      │   srv client /update_criteria                                │
+      └────────────────────────┬─────────────────────────────────────┘
+                               │
+           ┌───────────────────▼───────────────┐
+           │       experiment_evaluator         │
+           │  sub /event_trigger → start/stop  │
+           │  sub /estimated_states → evaluate │
+           │  pub /eval_live    (throttled)     │
+           │  pub /eval_summary (on finish)     │
+           │  srv server /update_criteria       │
+           └───────────────────────────────────┘
+                               │ WebSocket :9000+N
+               ┌───────────────▼───────────────┐
+               │        Browser (app.js)        │
+               │  fetches /config.json → WS port│
+               │  uPlot charts @ 30 Hz          │
+               │  Criteria tab (live editing)   │
+               │  Pos Sync / Zero buttons       │
+               └───────────────────────────────┘
+```
 
 ---
 
-## System Explanation (Need to revisit)
+## ROS 2 Topics
 
-### Phase-1 / Phase-2 Mocks
-- **`mock_encoder.py`** — ROS 2 node that stands in for the Teensy 4.1 + micro-ROS stack. Generates `sine`, `trapezoid`, or `step` position waveforms at 100 Hz with added Gaussian tick noise, and publishes on `/encoder_raw`.
-- **`mock_robot_controller.py`** — *not* a ROS node. Pure Python + `pylsl`. Reads `config/params.yaml`, streams telemetry on the LSL outlet `RobotTelemetry`, and emits `START`/`STOP` JSON markers on `MotionMarkers` driven by stdin commands.
+| Topic               | Type             | Producer                                  | Consumer(s)                                      |
+|---------------------|------------------|-------------------------------------------|--------------------------------------------------|
+| `/encoder_raw`      | `EncoderRaw`     | Teensy / mock_encoder / mock_ui           | `encoder_reader`                                 |
+| `/estimated_states` | `EncoderState`   | `encoder_reader`                          | `web_visualizer`, `experiment_evaluator`         |
+| `/actual_states`    | `ActualStates`   | `web_visualizer` (from LSL inlet)         | `web_visualizer` (self-loop → WS)                |
+| `/event_trigger`    | `EventTrigger`   | `web_visualizer` (LSL inlet) / `mock_ui`  | `web_visualizer` (self-loop → WS), `experiment_evaluator` |
+| `/eval_live`        | `ExperimentEval` | `experiment_evaluator`                    | `web_visualizer` (→ WS)                          |
+| `/eval_summary`     | `ExperimentEval` | `experiment_evaluator`                    | `web_visualizer` (→ WS)                          |
 
-### ROS 2 Nodes
-- **`encoder_reader`** (`Kalman_filter.py`) — constant-jerk Kalman filter. State vector `[position, velocity, acceleration, jerk]`, variable-`dt` transition matrix. Subscribes `/encoder_raw`, publishes `/encoder_state` with posterior variances and raw tick pass-through.
-- **`web_visualizer`** — the *bridge* node. Three jobs:
-  1. Subscribes `/encoder_state` and pushes it into an LSL outlet named `EncoderState` (so a non-ROS controller can consume it).
-  2. Pulls LSL inlets `RobotTelemetry` and `MotionMarkers`, republishing them as `/robot_telemetry` and `/motion_trigger`.
-  3. Runs a `websockets` server on port **9090** (`rosbridge_port` param, legacy name — no actual rosbridge runs), broadcasting every ROS message as a JSON envelope `{"topic": ..., "data": {...}}`. New clients receive the last-known message from each topic on connect.
+## LSL Streams
 
-### Topics & Messages (`claude_visualizer_interface/msg/`)
-| Topic              | Type             | Producer              |
-|--------------------|------------------|-----------------------|
-| `/encoder_raw`     | `EncoderRaw`     | `mock_encoder`        |
-| `/encoder_state`   | `EncoderState`   | `encoder_reader`      |
-| `/robot_telemetry` | `RobotTelemetry` | `web_visualizer` (from LSL) |
-| `/motion_trigger`  | `MotionTrigger`  | `web_visualizer` (from LSL) |
+| Stream name | Suffix (multi-pair) | Direction | Channels | Rate | Producer |
+|---|---|---|---|---|---|
+| `ActualStates` | `ActualStates_N` | inlet on verifier | 3 float | 500 Hz | robot machine |
+| `EventTrigger` | `EventTrigger_N` | inlet on verifier | 1 string | IRREGULAR | robot machine |
+| `EstimatedStates` | `EstimatedStates_N` | outlet on verifier | 3 float | 500 Hz | `web_visualizer` |
 
-### LSL Streams
-- `EncoderState` — 3 float channels: `position, velocity, acceleration` (outlet).
-- `RobotTelemetry` — 3 float channels: `cmd_position, cmd_velocity, cmd_acceleration` (inlet).
-- `MotionMarkers` — 1 string channel, irregular rate, JSON payload `{event, profile_id, label, expected_duration}` (inlet).
+Where `N` is the `pair_id` (e.g. `11`). No suffix when running a single pair (pair_id = 0 or unset).
 
-### Web Frontend
-Plain HTML / JS (no framework). `app.js` opens a WebSocket to `ws://<host>:9090`, parses the JSON envelopes, keeps a 10 s rolling window (5000-sample cap), and redraws **uPlot** charts at 30 Hz decoupled from the message rate.
-- **Live panel** — position, velocity, acceleration streams.
-- **Profile panel** — activated by a `START` motion trigger; overlays estimated vs. commanded position and velocity with profile ID, label, elapsed and expected duration.
-- Controls: Pause/Resume, Clear, and a connection status dot with auto-reconnect.
+---
+
+## Components
+
+### `encoder_reader` (`scripts/Kalman_filter.py`)
+Constant-jerk Kalman filter. State vector `[position, velocity, acceleration, jerk]`, variable-dt transition. Subscribes `/encoder_raw`, publishes `/estimated_states`.
+
+### `web_visualizer` (`scripts/web_visualizer.py`)
+The bridge node. Runs 5 threads: ROS executor, asyncio WebSocket server, HTTP file server, LSL-ActualStates worker, LSL-EventTrigger worker. Bridges LSL streams into ROS topics and broadcasts everything to the browser as JSON over WebSocket. Also serves `/config.json` so the browser can discover the correct WebSocket port dynamically.
+
+### `experiment_evaluator` (`scripts/experiment_evaluator.py`)
+Evaluates encoder motion against configurable pass/fail criteria. Supports four experiment types: `point_to_point`, `pick_place`, `performance`, `precision`. Publishes live metrics and final summary. Selects its criteria row from `criteria.yaml` by `pair_id` (the single setup identifier — `pair_id` 0 or any unlisted pair uses `default`). Criteria can be edited live from the browser CRITERIA tab via the `/update_criteria` service.
+
+### `mock_robot_controller` (`scripts/mock_robot_controller.py`)
+Non-ROS CLI tool. Streams continuous waveform telemetry (trapezoid/sine/step) on LSL `ActualStates` and sends experiment commands on LSL `EventTrigger` from stdin. Use when the real robot controller is not available. Supports `--pair-id` or `CV_PAIR_ID` env for multi-pair LSL suffix.
+
+### `mock_ui` (`mock_UI/mock_ui.py`)
+Tkinter GUI combining a mock encoder knob and a mock robot controller knob. Publishes `/encoder_raw` and `/event_trigger` (ROS2) and both LSL streams. Use for full end-to-end testing without any hardware. Features: Sync mode (rate-of-change mirroring), Fine/Rough sensitivity toggle, dual rad/deg readout, command entry field. Supports `--pair-id` or `CV_PAIR_ID` env for multi-pair LSL suffix.
 
 ---
 
 ## How to Run
 
-### Prerequisites — order matters
+### Single pair (basic)
 
 ```bash
-# 1. Source ROS 2 first so rclpy/colcon/rosidl tooling are on PATH
-source /opt/ros/<distro>/setup.bash          # humble / iron / jazzy
+# 1. Source ROS 2
+source /opt/ros/jazzy/setup.bash
 
-# 2. Activate the workspace venv (created with --system-site-packages so
-#    rclpy and other ROS Python packages remain visible inside the venv).
-#    If the venv does not exist yet:
-#      python3 -m venv --system-site-packages .venv
+# 2. Activate venv (created with --system-site-packages)
 source .venv/bin/activate
 
-# 3. Install Python deps into the venv (first time only)
-pip install pylsl websockets numpy pyyaml
-```
+# 3. Install Python deps (first time only)
+pip install pylsl websockets numpy pyyaml catkin-pkg empy lark
 
-> **Why the venv?** Pinning the same interpreter for `colcon`, for Python-shebang scripts installed by CMake, and for `pip install` avoids the classic "works in one terminal, not the other" mismatch.
-
-### Build
-
-```bash
-cd ~/Projects/claude_visualizer_ws
-colcon build --symlink-install
+# 4. Build (interface package first if .msg/.srv changed)
+colcon build --packages-select claude_visualizer_interface claude_visualizer
 source install/setup.bash
-```
 
-### Full pipeline (recommended)
-
-```bash
+# 5. Launch the pipeline
 ros2 launch claude_visualizer bringup.launch.py
-# optional waveform override:
-ros2 launch claude_visualizer bringup.launch.py waveform:=sine
-# optional WS port override (default 9090):
-ros2 launch claude_visualizer bringup.launch.py rosbridge_port:=9090
+# With a specific pair's criteria (pair_id also sets ports + LSL suffix):
+ros2 launch claude_visualizer bringup.launch.py pair_id:=11
+
+# 6a. Send experiment commands — CLI style (separate terminal)
+ros2 run claude_visualizer mock_robot_controller
+# prompt: ptp 5 index | pp 3 0,36,72 CW,CCW,CW true | perf 1.0 2.0 | prec 0 36 10 index | stop
+
+# 6b. OR use the GUI mock (separate terminal)
+python3 src/claude_visualizer/mock_UI/mock_ui.py
+
+# 7. Open browser
+# http://localhost:8000
 ```
 
-This launches `mock_encoder`, `encoder_reader`, and `web_visualizer` together.
-
-### Run the non-ROS LSL controller mock
-
-`mock_robot_controller.py` is **not** in the launch file — it's a standalone process. Start it in a separate terminal once the pipeline is up:
+### Multiple pairs on one LAN
 
 ```bash
-# Direct invocation
-python3 src/claude_visualizer/scripts/mock_robot_controller.py --waveform trapezoid
+# Generate env files (run once, keeps in pairs/ dir)
+./scripts/make_pair_env.sh 11   # → pairs/pair11.env
+./scripts/make_pair_env.sh 12   # → pairs/pair12.env
 
-# Or through ros2 run (after colcon build)
-ros2 run claude_visualizer mock_robot_controller.py -- --waveform sine
+# --- On the VERIFIER machine for pair 11 ---
+source /opt/ros/jazzy/setup.bash
+source .venv/bin/activate
+source pairs/pair11.env          # exports ROS_DOMAIN_ID=11, CV_PAIR_ID=11
+source install/setup.bash
+ros2 launch claude_visualizer bringup.launch.py
+# Listens on WS :9011 and HTTP :8011
 
-# Interactive commands: start | stop | quit
+# --- On the ROBOT machine for pair 11 ---
+source pairs/pair11.env          # exports CV_PAIR_ID=11
+python3 src/claude_visualizer/scripts/mock_robot_controller.py
+# Streams ActualStates_11 and EventTrigger_11 on LSL
+
+# Open browser: http://<verifier-ip>:8011
 ```
 
-### Open the dashboard
+> **Build note:** `colcon build` is required after any `.py` script change — scripts are copied to install, not symlinked (`--symlink-install` conflicts with micro_ros_package). Web files also require a rebuild.
 
-```bash
-cd web
-python3 -m http.server 8000
-# Then browse to http://localhost:8000
-# The page auto-connects to ws://localhost:9090.
+---
+
+## Multi-Pair LAN Scaling — Concept and Reasoning (Phase 6)
+
+This section explains **why** multi-pair scaling was designed the way it was, so the rationale is clear when you revisit or extend it.
+
+### Why is isolation needed at all?
+
+In FRA263, multiple robot-verifier pairs may run on the same lab network simultaneously — for example, one per group or one per station. Without isolation, the system breaks in three different ways that are not immediately obvious:
+
+1. **ROS 2 / DDS bleeds across the network.**  
+   ROS 2 uses a protocol called DDS (Data Distribution Service) to automatically discover other ROS nodes on the same network. By default, all ROS nodes using the same "domain ID" can see each other's topics. If Verifier A and Verifier B both run `/estimated_states` on the default domain (ID 0), the `experiment_evaluator` on Verifier A may evaluate encoder data coming from Verifier B's robot — producing completely wrong results.
+
+2. **LSL does not distinguish whose data is whose by default.**  
+   Lab Streaming Layer (LSL) is used to send robot telemetry across the LAN (the robot machine → verifier machine). When `web_visualizer` calls `_resolve_stream("ActualStates")`, it finds the first LSL stream with that name on the network — which might be from a completely different robot pair. This is the most dangerous cross-pair contamination because it is silent: the system will run normally but show the wrong robot's data.
+
+3. **Port collisions when two pairs run on the same machine.**  
+   If two verifier setups run on the same physical machine (for example, one machine simulating two pairs during development), both would try to bind to port 9090 (WebSocket) and port 8000 (HTTP). The second one fails to start. Even on separate machines, a consistent port scheme makes it easier to know which dashboard belongs to which pair.
+
+### Why a single `pair_id` number?
+
+Rather than asking the operator to configure three separate settings (ROS domain, LSL suffix, web port) separately for each pair, all three are derived from a single integer: `pair_id = N`. This minimizes human error — you only have one thing to set per pair, and everything else follows automatically:
+
+- `ROS_DOMAIN_ID = N` → isolates ROS within each verifier machine
+- LSL stream names get suffix `_N` (e.g. `ActualStates_11`) → isolates cross-machine data
+- WebSocket port = `9000 + N`, HTTP port = `8000 + N` → allows co-location without collision
+
+### Why an env file (`pairs/pair<N>.env`)?
+
+The `pair_id` must reach programs that are launched manually in separate terminals — not just through the ROS launch file. For example, `mock_robot_controller.py` runs as a plain Python script from a terminal on the robot machine. It cannot receive a ROS launch argument. A shell environment variable (`CV_PAIR_ID`) is the simplest way to pass this information to any program regardless of how it is started. The env file makes it easy to source with one command.
+
+The `ROS_DOMAIN_ID` must also be set **before** the ROS 2 daemon is started (not after), so it cannot be set inside the launch file itself — only a pre-sourced env file can guarantee this.
+
+### Why LSL and not ROS for cross-machine communication?
+
+The **Teensy micro-ROS agent and the entire ROS graph run on the verifier machine**, not on the robot machine. In real deployment, the robot controller does not speak ROS — it only emits LSL streams. So LSL is the only cross-machine transport in this system. DDS / ROS 2 traffic never crosses between the robot machine and verifier machine; it stays local to the verifier.
+
+This has an important implication: `ROS_DOMAIN_ID` isolation applies only within the verifier machine (preventing one verifier's ROS graph from interfering with another verifier's ROS graph on the same LAN). It does nothing for the robot ↔ verifier link. The LSL suffix is the only thing that isolates cross-machine data.
+
+### Why add `_N` to both the stream name AND source_id?
+
+LSL uses `name` + `source_id` together to uniquely identify a stream. When the verifier searches for its robot's stream with `_resolve_stream("ActualStates_11")`, adding `_11` to the name ensures the search returns only pair 11's stream. Adding `_11` to the `source_id` as well provides a secondary guarantee: if somehow two streams had the same suffixed name, the source_id would still distinguish them.
+
+### Why `/config.json` and not hardcode the WebSocket port in the browser?
+
+The HTML/JavaScript files are static — they are built once and served from the install directory. If the WebSocket port were hardcoded in `app.js` as `:9090`, every pair would need a different build of the frontend. That is impractical.
+
+Instead, the HTTP server (which already runs on the correct port for this pair) serves a tiny JSON file at `/config.json`:
+```json
+{"ws_port": 9011}
 ```
+The browser fetches this file when the page loads, discovers the correct WebSocket port, and connects. Because the browser uses `location.hostname` (the verifier's IP — the same host that served the page), it automatically connects to the right machine without needing any hardcoded IP addresses either.
 
-### Phase-1 debug rollback
+### Backward compatibility
 
-To verify only `mock_encoder` + Kalman filter (e.g. for KF tuning in PlotJuggler), comment out `web_visualizer_node` in `src/claude_visualizer/launch/bringup.launch.py`. Nothing else needs to change.
+All of these changes are backward compatible. If `pair_id` is not set (or is set to 0), the system behaves exactly as it did before Phase 6:
+- No suffix on LSL stream names
+- Ports: WebSocket `:9090`, HTTP `:8000`
+- ROS domain: 0
+
+So existing single-pair setups require no changes.
 
 ---
 
 ## Dependencies
 
-### ROS 2 packages (from `package.xml`)
-- **Build tools:** `ament_cmake`, `ament_cmake_python`, `rosidl_default_generators`
-- **Runtime:** `rclcpp`, `rclpy`, `std_msgs`, `builtin_interfaces`, `claude_visualizer_interface`
-- **Lint/test:** `ament_lint_auto`, `ament_lint_common`
+### Python (pip, venv)
+| Package      | Used by                                              |
+|--------------|------------------------------------------------------|
+| `pylsl`      | `web_visualizer.py`, `mock_robot_controller.py`, `mock_ui.py` |
+| `websockets` | `web_visualizer.py`                                  |
+| `numpy`      | `mock_encoder.py`, `Kalman_filter.py`                |
+| `PyYAML`     | `mock_robot_controller.py`, `experiment_evaluator.py` |
+| `catkin-pkg` | ROS 2 build tooling (required in venv)               |
+| `empy`       | ROS 2 build tooling (required in venv)               |
+| `lark`       | ROS 2 build tooling (required in venv)               |
 
-Expected ROS 2 distro: package format is 3 → **Humble / Iron / Jazzy** (no distro pinned in package files).
+### ROS 2
+`rclcpp`, `rclpy`, `std_msgs`, `builtin_interfaces`, `rosidl_default_generators`
 
-### Python packages (pip, not rosdep-managed)
-| Package      | Used by                                       |
-|--------------|-----------------------------------------------|
-| `pylsl`      | `web_visualizer.py`, `mock_robot_controller.py` |
-| `websockets` | `web_visualizer.py` (built-in WS server)       |
-| `numpy`      | `mock_encoder.py`, `Kalman_filter.py`          |
-| `PyYAML`     | `mock_robot_controller.py` (reads `params.yaml`) |
-
-```bash
-# One-shot install into the activated venv
-pip install pylsl websockets numpy pyyaml
-```
-
-### Frontend (CDN-loaded, no install needed)
-- [uPlot 1.6.30](https://github.com/leeoniya/uPlot) via jsdelivr.
+### Frontend (CDN)
+uPlot 1.6.30 via jsdelivr
 
 ### System
-- **Python** 3.12.x (matches the venv used during development).
-- **liblsl** — the native library backing `pylsl`. On Ubuntu 22.04+:
-  ```bash
-  sudo apt install liblsl-dev   # or install the labstreaminglayer release deb
-  ```
+`liblsl`: `sudo apt install liblsl-dev`

@@ -6,6 +6,7 @@ import os
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
+from rcl_interfaces.msg import ParameterDescriptor
 import yaml
 
 from claude_visualizer_interface.msg import EventTrigger, EncoderState, ExperimentEval
@@ -36,16 +37,22 @@ class ExperimentEvaluator(Node):
         super().__init__("experiment_evaluator")
 
         # ── parameters ───────────────────────────────────────────────────────
-        self.declare_parameter("robot_id", "default")
+        # self.declare_parameter("pair_id", "0")
+        # Launch passes pair_id via LaunchConfiguration; "11" is type-inferred to INT,
+        # while the default/standalone case is STR — dynamic_typing accepts either
+        # (the criteria loader normalizes with str()). Fixes InvalidParameterTypeException.
+        self.declare_parameter(
+            "pair_id", "0", ParameterDescriptor(dynamic_typing=True)
+        )
         self.declare_parameter("criteria_file_path", "")
 
-        robot_id      = self.get_parameter("robot_id").value
+        pair_id       = self.get_parameter("pair_id").value
         criteria_file = self.get_parameter("criteria_file_path").value
 
         # ── load criteria ────────────────────────────────────────────────────
-        self._criteria = self._load_criteria(criteria_file, robot_id)
+        self._criteria = self._load_criteria(criteria_file, pair_id)
         self.get_logger().info(
-            f"[ExperimentEvaluator] robot_id={robot_id!r}  criteria={self._criteria}"
+            f"[ExperimentEvaluator] pair_id={pair_id!r}  criteria={self._criteria}"
         )
 
         # ── QoS ──────────────────────────────────────────────────────────────
@@ -75,7 +82,7 @@ class ExperimentEvaluator(Node):
         self._reset_state()
 
     # ── criteria loader ───────────────────────────────────────────────────────
-    def _load_criteria(self, path: str, robot_id: str) -> dict:
+    def _load_criteria(self, path: str, pair_id: str) -> dict:
         default = {
             "min_speed":           0.5,
             "min_acceleration":    1.0,
@@ -91,11 +98,21 @@ class ExperimentEvaluator(Node):
             return default
         with open(path, "r") as f:
             data = yaml.safe_load(f)
-        table = data.get("criteria", {})
-        if robot_id in table:
-            return table[robot_id]
+        # table = data.get("criteria", {})
+        # if robot_id in table:
+        #     return table[robot_id]
+        # self.get_logger().warn(
+        #     f"robot_id {robot_id!r} not in criteria table; using 'default'"
+        # )
+        # return table.get("default", default)
+        # Normalize keys to strings: YAML parses bare `11:` as an int, but pair_id
+        # arrives as a string from the ROS param. pair_id 0 / unlisted → 'default'.
+        table = {str(k): v for k, v in data.get("criteria", {}).items()}
+        key = str(pair_id)
+        if key in table:
+            return table[key]
         self.get_logger().warn(
-            f"robot_id {robot_id!r} not in criteria table; using 'default'"
+            f"pair_id {pair_id!r} not in criteria table; using 'default'"
         )
         return table.get("default", default)
     
@@ -143,6 +160,7 @@ class ExperimentEvaluator(Node):
         self._last_live_time_s: float         = 0.0
         self._last_pos_rad: float | None      = None  # latest /estimated_states position
         self._samples: list[tuple[float, float, float]] = []  # (pos_rad, vel_rad_s, accel_rad_s2)
+        self._t_start: float                  = 0.0
 
         # ptp settling
         self._settling_time_s: float | None   = None
@@ -160,9 +178,17 @@ class ExperimentEvaluator(Node):
 
         # precision
         self._trial_positions_rad: list[float]     = []
+        self._prec_est_terminating_t_s: float      = None
+        self._buffer_reach_t_s: float              = 1.0
         self._prec_at_target: bool                 = False
         self._prec_cont_band_entry_s: float | None = None
         self._prec_skipped: int                    = 0
+        #start time of the return-to-init phase, used for its own force-skip timeout
+        self._prec_return_t_start_s: float | None  = None
+        #return-to-init (group 2) settled positions, its skip count, and half-band cross timestamp
+        self._return_positions_rad: list[float]    = []
+        self._prec_return_skipped: int             = 0
+        self._prec_return_est_t_s: float | None    = None
 
         # performance
         self._peak_speed_rad_s: float  = 0.0
@@ -200,6 +226,7 @@ class ExperimentEvaluator(Node):
         self._reset_state()
         self._active_action = action
         self._payload       = payload
+        self._t_start       = self.get_clock().now().nanoseconds * 1e-9
         self.get_logger().info(f"[Evaluator] started experiment: {action}")
 
     def _finish_experiment(self):
@@ -413,28 +440,47 @@ class ExperimentEvaluator(Node):
     def _skip_trial(self):
         """Advance the precision run past a stuck phase.
 
-        Phase = approaching the target (``_prec_at_target`` False): the trial is being
-        attempted but hasn't been recorded, so drop it — count it toward the repeat
-        total (so the run still terminates) but record no position (excluded from the
-        mean/std/max stats).
+        Single funnel for both the manual skip button (``_skip_iteration``) and the two
+        auto-skip timeouts in ``_update_prec``. It OWNS both the skip-counter selection
+        and the phase flip: the counter is chosen by reading ``_prec_at_target`` BEFORE
+        the phase is flipped, so callers must never pre-flip the phase.
 
-        Phase = returning to the init position (``_prec_at_target`` True): the previous
-        trial was already recorded; we're only stuck on the inter-trial return, so just
-        proceed to the next approach WITHOUT counting a dropped trial.
+        Phase = approaching the target (``_prec_at_target`` False): the init→target
+        measurement is dropped — count a TARGET skip (``_prec_skipped``), then flip into
+        the return phase so the return-to-init half is still observed.
+
+        Phase = returning to the init position (``_prec_at_target`` True): the return→init
+        measurement is dropped — count a RETURN skip (``_prec_return_skipped``), flip back
+        to the approach phase, then run the termination check (termination lives here).
         """
+
         self._prec_cont_band_entry_s = None
+        #NOTE: pick the skip counter from the CURRENT phase BEFORE flipping it below.
         if self._prec_at_target:
-            self._prec_at_target = False
-            self.get_logger().info("[Evaluator] precision return-to-init SKIPPED")
+            # return-to-init phase skipped => count a RETURN skip, then go back to approach
+            self._prec_return_skipped += 1
+            self._prec_at_target       = False
+            self._prec_return_est_t_s  = None
+            self.get_logger().info(
+                f"[Evaluator] precision return-to-init SKIPPED "
+                f"({len(self._return_positions_rad)} done, {self._prec_return_skipped} skipped)"
+            )
+            #termination lives in the return phase: this full cycle is done (return dropped)
+            if (len(self._return_positions_rad) + self._prec_return_skipped
+                    >= self._payload["repeat"]):
+                self._finish_experiment()
             return
 
-        self._prec_skipped += 1
+        # approach phase skipped => count a TARGET skip, then flip into the return phase
+        self._prec_skipped             += 1
+        self._prec_at_target            = True
+        self._prec_est_terminating_t_s  = None
+        self._prec_return_t_start_s     = None   # lazily re-stamped in the return branch
         self.get_logger().info(
             f"[Evaluator] precision trial SKIPPED "
             f"({len(self._trial_positions_rad)} done, {self._prec_skipped} skipped)"
         )
-        if len(self._trial_positions_rad) + self._prec_skipped >= self._payload["repeat"]:
-            self._finish_experiment()
+        #NOTE: no termination check here anymore — termination lives in the return phase
 
     def _update_perf(self, vel_rad_s: float, accel_rad_s2: float):
         self._peak_speed_rad_s  = max(self._peak_speed_rad_s,  abs(vel_rad_s))
@@ -447,30 +493,71 @@ class ExperimentEvaluator(Node):
         travel_rad = abs(tar_rad - init_rad)
         band_rad   = max(SETTLING_THRESHOLD_rad,
                          self._criteria["settling_band_pct"] / 100.0 * travel_rad)
+        counting_band_rad = 50.0/100.0 * travel_rad
 
         if not self._prec_at_target:
-            # Waiting to settle at target position
+            # ── init→target approach (group 1) ── waiting to settle at target position
             if abs(pos_rad - tar_rad) < band_rad:
                 if self._prec_cont_band_entry_s is None:
                     self._prec_cont_band_entry_s = now_s
                 if now_s - self._prec_cont_band_entry_s >= SETTLING_WINDOW_s:
                     self._trial_positions_rad.append(pos_rad)
-                    self._prec_at_target         = True
-                    self._prec_cont_band_entry_s = None
-                    if (len(self._trial_positions_rad) + self._prec_skipped
-                            >= payload["repeat"]):
-                        self._finish_experiment()
-                        return
+                    #flip into the return phase; termination no longer happens here so the
+                    #final trial also drives back to init before the run finishes
+                    self._prec_at_target           = True
+                    self._prec_cont_band_entry_s   = None
+                    self._prec_est_terminating_t_s = None
+                    #fresh timers for the upcoming return phase (lazily re-stamped below)
+                    self._prec_return_t_start_s    = None
+                    self._prec_return_est_t_s      = None
+
+            #if the robot pass the trial counting_band and still not reach the target fall in this case
+            elif (abs(pos_rad - tar_rad) < counting_band_rad) and self._prec_cont_band_entry_s is None:
+                #if it is the first entry to this condition => collect the timestamp
+                if self._prec_est_terminating_t_s is None:
+                    self._prec_est_terminating_t_s = now_s
+                #if the time used is more than expected reach time we consider to force skip the trial
+                #NOTE: The reach time is calculated by double the time that use for reaching the 50% of the total distance and adding some buffer
+                if now_s - self._t_start >= ((self._prec_est_terminating_t_s - self._t_start)*2.0 + self._buffer_reach_t_s):
+                    #force skip the trial; _skip_trial() counts the target skip and flips the phase
+                    self._prec_est_terminating_t_s = None
+                    self._skip_trial()
+
             else:
                 self._prec_cont_band_entry_s = None
         else:
-            # Must settle at init position before next trial counts
+            # ── return→init (group 2) ── must settle at init, and it is now MEASURED
+            #lazily stamp the return-phase start on its first frame (its own skip timeout ref)
+            if self._prec_return_t_start_s is None:
+                self._prec_return_t_start_s = now_s
+
             if abs(pos_rad - init_rad) < band_rad:
                 if self._prec_cont_band_entry_s is None:
                     self._prec_cont_band_entry_s = now_s
                 if now_s - self._prec_cont_band_entry_s >= SETTLING_WINDOW_s:
+                    #record the return-to-init settled position, then flip back to approach
+                    self._return_positions_rad.append(pos_rad)
                     self._prec_at_target         = False
                     self._prec_cont_band_entry_s = None
+                    self._prec_return_est_t_s    = None
+                    self._prec_return_t_start_s  = None
+                    #termination lives here: finish once `repeat` full cycles are done
+                    if (len(self._return_positions_rad) + self._prec_return_skipped
+                            >= payload["repeat"]):
+                        self._finish_experiment()
+                        return
+
+            #gap 3: robot crossed the half-band back toward init but never settled => auto-skip
+            elif (abs(pos_rad - init_rad) < counting_band_rad) and self._prec_cont_band_entry_s is None:
+                #first entry to this condition => collect the half-band-crossing timestamp
+                if self._prec_return_est_t_s is None:
+                    self._prec_return_est_t_s = now_s
+                #mirror of the approach timeout: 2× the time-to-halfway plus a buffer
+                if now_s - self._prec_return_t_start_s >= ((self._prec_return_est_t_s - self._prec_return_t_start_s)*2.0 + self._buffer_reach_t_s):
+                    #force skip the return; _skip_trial() counts the return skip and flips the phase
+                    self._prec_return_est_t_s = None
+                    self._skip_trial()
+
             else:
                 self._prec_cont_band_entry_s = None
 
@@ -508,12 +595,28 @@ class ExperimentEvaluator(Node):
                 "elapsed_s":           round(elapsed_s, 3),
             }
         if action == "precision":
-            tar_rad = _to_rad(self._payload["target_pos"], self._payload["unit"])
+            # tar_rad = _to_rad(self._payload["target_pos"], self._payload["unit"])
+            # return {
+            #     "target_rad":        round(tar_rad, 5),
+            #     "current_pos_rad":   round(pos_rad, 5),
+            #     "current_error_rad": round(abs(pos_rad - tar_rad), 5),
+            #     "trials_done":       len(self._trial_positions_rad),
+            #     "trials_skipped":    self._prec_skipped,
+            #     "trials_total":      self._payload["repeat"],
+            #     "elapsed_s":         round(elapsed_s, 3),
+            # }
+            tar_rad  = _to_rad(self._payload["target_pos"], self._payload["unit"])
+            init_rad = _to_rad(self._payload["init_pos"],   self._payload["unit"])
+            #the live reference tracks the ACTIVE phase: target while approaching, init
+            #while returning. app.js feeds target_rad into the amber reference line, so it
+            #follows the phase with no change on the JS drawing side.
+            ref_rad = init_rad if self._prec_at_target else tar_rad
             return {
-                "target_rad":        round(tar_rad, 5),
+                "target_rad":        round(ref_rad, 5),
                 "current_pos_rad":   round(pos_rad, 5),
-                "current_error_rad": round(abs(pos_rad - tar_rad), 5),
+                "current_error_rad": round(abs(pos_rad - ref_rad), 5),
                 "trials_done":       len(self._trial_positions_rad),
+                "returns_done":      len(self._return_positions_rad),
                 "trials_skipped":    self._prec_skipped,
                 "trials_total":      self._payload["repeat"],
                 "elapsed_s":         round(elapsed_s, 3),
@@ -590,26 +693,55 @@ class ExperimentEvaluator(Node):
             }
 
         if action == "precision":
-            tar_rad    = _to_rad(self._payload["target_pos"], self._payload["unit"])
-            n_required = self._payload["repeat"]
-            errors_rad = [abs(t - tar_rad) for t in self._trial_positions_rad]
-            n_done     = len(errors_rad)
+            # ── previous single-group (target-only) summary ──
+            # tar_rad    = _to_rad(self._payload["target_pos"], self._payload["unit"])
+            # n_required = self._payload["repeat"]
+            # errors_rad = [abs(t - tar_rad) for t in self._trial_positions_rad]
+            # n_done     = len(errors_rad)
+            # mean_error_rad = sum(errors_rad) / n_done if n_done > 0 else 0.0
+            # std_error_rad  = (
+            #     math.sqrt(sum((e - mean_error_rad) ** 2 for e in errors_rad) / n_done)
+            #     if n_done > 1 else 0.0
+            # )
+            # max_error_rad  = max(errors_rad) if errors_rad else 0.0
+            # return {
+            #     "target_rad":     round(tar_rad, 5),
+            #     "num_trials":     n_done,
+            #     "num_skipped":    self._prec_skipped,
+            #     "mean_error_rad": round(mean_error_rad, 5),
+            #     "std_error_rad":  round(std_error_rad, 5),
+            #     "max_error_rad":  round(max_error_rad, 5),
+            #     "pass_error":     n_done >= n_required and mean_error_rad <= c["max_avg_error_rad"],
+            # }
 
-            mean_error_rad = sum(errors_rad) / n_done if n_done > 0 else 0.0
-            std_error_rad  = (
-                math.sqrt(sum((e - mean_error_rad) ** 2 for e in errors_rad) / n_done)
-                if n_done > 1 else 0.0
-            )
-            max_error_rad  = max(errors_rad) if errors_rad else 0.0
+            tar_rad    = _to_rad(self._payload["target_pos"], self._payload["unit"])
+            init_rad   = _to_rad(self._payload["init_pos"],   self._payload["unit"])
+            n_required = self._payload["repeat"]
+
+            def _grp(positions, ref_rad, n_skipped):
+                """Accuracy (mean/max error) + precision (std) of one phase group."""
+                errs = [abs(p - ref_rad) for p in positions]
+                n    = len(errs)
+                mean = sum(errs) / n if n > 0 else 0.0
+                std  = (math.sqrt(sum((e - mean) ** 2 for e in errs) / n)
+                        if n > 1 else 0.0)
+                return {
+                    "num_trials":     n,
+                    "num_skipped":    n_skipped,
+                    "mean_error_rad": round(mean, 5),
+                    "std_error_rad":  round(std, 5),
+                    "max_error_rad":  round(max(errs) if errs else 0.0, 5),
+                    #return group reuses the same criteria as the target group
+                    "pass_error":     n >= n_required and mean <= c["max_avg_error_rad"],
+                }
 
             return {
-                "target_rad":     round(tar_rad, 5),
-                "num_trials":     n_done,
-                "num_skipped":    self._prec_skipped,
-                "mean_error_rad": round(mean_error_rad, 5),
-                "std_error_rad":  round(std_error_rad, 5),
-                "max_error_rad":  round(max_error_rad, 5),
-                "pass_error":     n_done >= n_required and mean_error_rad <= c["max_avg_error_rad"],
+                "target_rad":   round(tar_rad, 5),
+                "init_rad":     round(init_rad, 5),
+                #group 1: init→target reaching performance
+                "target_group": _grp(self._trial_positions_rad, tar_rad, self._prec_skipped),
+                #group 2: return→init returning performance
+                "return_group": _grp(self._return_positions_rad, init_rad, self._prec_return_skipped),
             }
 
         return {}

@@ -31,7 +31,7 @@ class KalmanFilterNode(Node):
         super().__init__("encoder_reader")
 
         # ── Parameters ───────────────────────────────────────────────────────
-        self.declare_parameter("ticks_per_rev", 4096)
+        self.declare_parameter("ticks_per_rev", 8192)
         self.declare_parameter("kf_q_position", 0.001)
         self.declare_parameter("kf_q_velocity", 0.01)
         self.declare_parameter("kf_q_acceleration", 0.1)

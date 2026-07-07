@@ -1,7 +1,9 @@
 (() => {
     "use strict";
 
-    const WS_URL        = `ws://${location.hostname || "localhost"}:9090`;
+    // const WS_URL        = `ws://${location.hostname || "localhost"}:9090`;
+    // Fallback default; the real ws_port is fetched from /config.json before connecting.
+    let WS_URL          = `ws://${location.hostname || "localhost"}:9090`;
     const WINDOW_SECONDS = 10;
     const MAX_SAMPLES    = 5000;
     const REDRAW_HZ      = 30;
@@ -504,6 +506,7 @@
     const METRIC_LABEL_MAP = {
         // shared
         target_rad:              "Target [rad]",
+        init_rad:                "Init pos [rad]",
         elapsed_s:               "Elapsed [s]",
         // position / error
         current_pos_rad:         "Current pos [rad]",
@@ -529,6 +532,7 @@
         failed:                  "Failed WPs",
         skipped:                 "Skipped WPs",
         trials_done:             "Trials done",
+        returns_done:            "Returns done",
         trials_skipped:          "Trials skipped",
         trials_total:            "Total trials",
         num_trials:              "Trials",
@@ -536,9 +540,9 @@
     };
 
     const INT_FIELDS = new Set([
-        "current_waypoint", "total_waypoints", "trials_done", "trials_skipped",
-        "trials_total", "passed", "failed", "skipped", "num_trials", "num_skipped",
-        "waypoint",
+        "current_waypoint", "total_waypoints", "trials_done", "returns_done",
+        "trials_skipped", "trials_total", "passed", "failed", "skipped",
+        "num_trials", "num_skipped", "waypoint",
     ]);
 
     function fmtVal(k, v) {
@@ -580,12 +584,40 @@
         document.getElementById("eval-live").classList.remove("hidden");
     }
 
+    // Render one titled precision phase group (target-reaching / return-to-init),
+    // reusing the waypoint-group styling: a PASS/FAIL header row + metric rows.
+    function renderPrecisionGroup(rows, title, grp) {
+        const titleEl = document.createElement("div");
+        titleEl.className = "eval-waypoint-title";
+        titleEl.textContent = title;
+        rows.appendChild(titleEl);
+
+        const groupEl = document.createElement("div");
+        groupEl.className = "eval-waypoint-group";
+        const pass = grp.pass_error === true;
+        const hdr  = document.createElement("div");
+        hdr.className = "eval-row" + (pass ? " pass-ok" : " pass-fail");
+        hdr.innerHTML = `<span class="eval-key">Result</span>` +
+                        `<span class="eval-val">${pass ? "PASS" : "FAIL"}</span>`;
+        groupEl.appendChild(hdr);
+        const SKIP_G = new Set(["pass_error"]);
+        for (const [k, v] of Object.entries(grp))
+            if (!SKIP_G.has(k) && v != null) appendRow(groupEl, k, v);
+        rows.appendChild(groupEl);
+    }
+
     function renderSummary(d) {
         const rows = document.getElementById("eval-summary-rows");
         rows.innerHTML = "";
-        const SKIP = new Set(["stamp", "action", "details"]);
+        const SKIP = new Set(["stamp", "action", "details", "target_group", "return_group"]);
         for (const [k, v] of Object.entries(d))
             if (!SKIP.has(k) && v != null) appendRow(rows, k, v);
+
+        // precision: two grouped sections (init→target and return→init)
+        if (d.target_group)
+            renderPrecisionGroup(rows, "Target reaching performance", d.target_group);
+        if (d.return_group)
+            renderPrecisionGroup(rows, "Initial position returning performance", d.return_group);
 
         if (Array.isArray(d.details) && d.details.length > 0) {
             const titleEl = document.createElement("div");
@@ -738,7 +770,22 @@
             }
         });
     }
-    connect();
+
+    // Fetch the runtime WebSocket port from the server, then connect. Cached in
+    // WS_URL so the close-handler's reconnect reuses it without re-fetching.
+    async function resolveWsUrl() {
+        try {
+            const resp = await fetch("/config.json", { cache: "no-store" });
+            const cfg  = await resp.json();
+            if (cfg && cfg.ws_port) {
+                WS_URL = `ws://${location.hostname || "localhost"}:${cfg.ws_port}`;
+            }
+        } catch (_) { /* keep fallback WS_URL */ }
+        document.getElementById("ws-url").textContent = WS_URL;
+    }
+
+    // connect();
+    resolveWsUrl().then(connect);
 
     // ── Tab switching ─────────────────────────────────────────────────────────
     function switchTab(name) {

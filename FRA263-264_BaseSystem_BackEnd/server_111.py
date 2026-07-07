@@ -33,9 +33,9 @@ link_state = {
 }
 
 # --- Loop rates (each loop is independent) ---
-STATS_HZ = 50.0                   # WebSocket + LSL: broadcast cached state
+STATS_HZ = 25.0                   # WebSocket + LSL: broadcast cached state
 HB_HZ = 5.0                       # Modbus: read 0x00 and reply HI when robot sends YA
-MODBUS_STATUS_HZ = 30.0           # Modbus: full read for pos / gripper / mode
+MODBUS_STATUS_HZ = 25.0           # Modbus: full read for pos / gripper / mode
 
 STATS_INTERVAL = 1.0 / STATS_HZ
 HB_INTERVAL = 1.0 / HB_HZ
