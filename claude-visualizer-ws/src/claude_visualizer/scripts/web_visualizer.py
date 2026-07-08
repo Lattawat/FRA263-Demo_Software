@@ -435,6 +435,9 @@ class WebVisualizerNode(Node):
     def _estimated_states_cb(self, msg: EncoderState) -> None:
         # msg.position already arrives zeroed from the Kalman node, so the LSL
         # outlet and the WS broadcast both carry the same frame, no patching here.
+        #temp
+        # self.get_logger().info(f"[Estimated States to veriUI]: position={round(float(msg.position) * 1.0/_DEG_TO_RAD, 2)}")
+
         self._estimated_states_outlet.push_sample(
             [float(msg.position), float(msg.velocity), float(msg.acceleration)],
             timestamp=_stamp_to_sec(msg.header.stamp),
@@ -445,6 +448,9 @@ class WebVisualizerNode(Node):
     # ── Actual States and Trigger data flow: LSL inlet "ActualStates" → /actual_states + WS ──────────────
 
     def _actual_states_cb(self, msg: ActualStates) -> None:
+        #temp
+        # self.get_logger().info(f"[Actual States to veriUI]: position={round(float((actual_states_to_json(msg))["data"]["actual_position"]), 2)}")
+
         self._broadcast(actual_states_to_json(msg))
 
     def _event_trigger_cb(self, msg: EventTrigger) -> None:
@@ -513,6 +519,11 @@ class WebVisualizerNode(Node):
                 # No _broadcast here — the ROS subscription callback handles it.
                 # self.get_logger().info(
                 #     f"[ActualStates]: position={msg.actual_position} | velocity={msg.actual_velocity} | acceleration={msg.actual_acceleration}"
+                # )
+                #temp
+                # self.get_logger().info(
+                #     f"[ActualStates from Back-end]: position={float(sample[0])}\n"
+                #     f"[Offseted ActualStates from Back-end]: position={float(sample[0]) - (self._actual_pos_offset_rad / _DEG_TO_RAD)}"
                 # )
 
     # ── Flow 3: LSL inlet "EventTrigger" → /event_trigger + WS ──────────────

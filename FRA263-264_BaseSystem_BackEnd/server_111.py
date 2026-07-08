@@ -1,4 +1,5 @@
 # server.py
+import argparse
 import asyncio
 import json
 import pylsl
@@ -32,6 +33,10 @@ link_state = {
     "last_ya_time": None,  # perf_counter() when reg 0x00 last equaled YA (22881)
 }
 
+# set_home zero reference for the base-system (WS) UI only; snapshot of
+# theta_actual_pos at the last set_home. LSL/verification stream stays raw.
+home_state = {"pos_offset_deg": 0.0}
+
 # --- Loop rates (each loop is independent) ---
 STATS_HZ = 25.0                   # WebSocket + LSL: broadcast cached state
 HB_HZ = 5.0                       # Modbus: read 0x00 and reply HI when robot sends YA
@@ -46,24 +51,38 @@ HB_DEAD_TIMEOUT = 0.8
 
 modbus_lock = asyncio.Lock()
 
+# ── Pair identity → LSL stream-name suffix ───────────────────────────────────
+# Mirrors ROS web_visualizer.py: pair_id 0 = legacy (no suffix); N>=1 suffixes
+# every LSL stream name with f"_{N}" so this back-end's ActualStates/EventTrigger
+# resolve as the pair's streams on the visualizer side. CLI arg only (no env).
+_parser = argparse.ArgumentParser(description="Base-System back-end (LSL + WebSocket)")
+_parser.add_argument("--pair_id", type=int, default=0,
+                     help="Integer pair id. 0 = legacy single-pair (no LSL suffix); "
+                          "N>=1 suffixes LSL stream names with _N to match web_visualizer.")
+_args, _ = _parser.parse_known_args()          # parse_known_args: tolerate extra flags
+_session = str(_args.pair_id) if _args.pair_id else ""
+_suf = (lambda n: f"{n}_{_session}") if _session else (lambda n: n)
+print(f"[server_111] pair_id={_args.pair_id} "
+      f"lsl_suffix={'_' + _session if _session else '(none)'}")
+
 # LSL StreamInfo for robot states (position, speed, accel)
 actual_state = pylsl.StreamInfo(
-    name="ActualStates",
+    name=_suf("ActualStates"),
     type="States",
     channel_count=3, # position, speed, accel
     nominal_srate=STATS_HZ,
     channel_format="float32",
-    source_id="mock_robot_controller-actual_states"
+    source_id=_suf("mock_robot_controller-actual_states")
 )
 
-# LSL StreamInfo for events 
+# LSL StreamInfo for events
 event_info = pylsl.StreamInfo(
-    name="EventTrigger",
+    name=_suf("EventTrigger"),
     type="Trigger",
     channel_count=1,
     nominal_srate=pylsl.IRREGULAR_RATE,
     channel_format="string",
-    source_id="mock_robot_controller-event_trigger"
+    source_id=_suf("mock_robot_controller-event_trigger")
 )
 
 # Create LSL outlets
@@ -84,8 +103,8 @@ async def _sleep_fixed_rate(next_tick: float, interval: float) -> float:
 
 async def _wait_stats_tick(next_tick: float) -> float:
     """
-    Sleep-first 50 Hz scheduler: wait for the slot, then emit exactly one sample.
-    Keeps one STATS (+ LSL) sample every STATS_INTERVAL (20 ms → 50/s).
+    Sleep-first STATS_HZ Hz scheduler: wait for the slot, then emit exactly one sample.
+    Keeps one STATS (+ LSL) sample every STATS_INTERVAL (1/STATS_HZ s → STATS_HZ hz).
     """
     delay = next_tick - time.perf_counter()
     if delay > 0:
@@ -95,6 +114,8 @@ async def _wait_stats_tick(next_tick: float) -> float:
 
 def _lsl_motion_sample() -> list[float]:
     """Float triplet for LSL outlet (position, speed, accel)."""
+    #temp
+    # print("Back-end => veri", float(protocol.theta_actual_pos))
     return [
         float(protocol.theta_actual_pos),
         float(protocol.theta_actual_speed),
@@ -140,6 +161,15 @@ def _apply_protocol_to_robot_state() -> None:
     )
 
 
+def _offseted_position_deg():
+    """robot_state position minus the set_home zero offset, for the React UI.
+    Passes through the '--' placeholder untouched (before first Modbus read)."""
+    raw = robot_state["position"]
+    if isinstance(raw, (int, float)):
+        return round(raw - home_state["pos_offset_deg"], 4)   # 4 dp: kill float noise
+    return raw
+
+
 def _build_stats_payload() -> dict:
     """
     STATS message for the UI.
@@ -150,9 +180,14 @@ def _build_stats_payload() -> dict:
     """
     serial_ok = _serial_connected()
     hb_alive = _heartbeat_alive()
+
+    #temp
+    # print("Back-end => Front-end", robot_state["position"])
+
     return {
         "type": "STATS",
-        "pos": robot_state["position"],
+        # "pos": robot_state["position"],
+        "pos": _offseted_position_deg(),
         "speed": robot_state["speed"],
         "accel": robot_state["accel"],
         "gripper": f"{robot_state['gripper_z']} / {robot_state['gripper_jaw']}",
@@ -167,7 +202,7 @@ def _build_stats_payload() -> dict:
 async def heartbeat_loop() -> None:
     """
     5 Hz Modbus heartbeat: read reg 0x00; if robot sent YA, reply HI.
-    Does not block the 50 Hz STATS broadcast loop.
+    Does not block the STATS_HZ Hz STATS broadcast loop.
     """
     next_tick = time.perf_counter()
     try:
@@ -217,7 +252,7 @@ async def stats_broadcast_loop(websocket) -> None:
     """
     Exactly STATS_HZ samples per second to WebSocket + LSL.
 
-    Sleep-first timing: wait 20 ms → send one sample → repeat (50 samples/s).
+    Sleep-first timing: wait 1/STATS_HZ s → send one sample → repeat (STATS_HZ samples/s).
     LSL timestamps are evenly spaced at 1/STATS_HZ regardless of small send jitter.
     """
     next_tick = time.perf_counter()
@@ -230,7 +265,7 @@ async def stats_broadcast_loop(websocket) -> None:
         while True:
             next_tick = await _wait_stats_tick(next_tick)
 
-            # If we fell more than one period behind, realign (no burst, keep 50/s cap)
+            # If we fell more than one period behind, realign (no burst, keep STATS_HZ cap)
             now = time.perf_counter()
             if next_tick < now - STATS_INTERVAL:
                 next_tick = now + STATS_INTERVAL
@@ -295,7 +330,8 @@ async def handler(websocket: websockets.WebSocketServerProtocol):
     initial_stats = {
         "type": "STATS",
         "message": "Connected to Python Backend",
-        "pos": robot_state["position"],
+        # "pos": robot_state["position"],
+        "pos": _offseted_position_deg(),
         "speed": robot_state["speed"],
         "accel": robot_state["accel"],
         "gripper": f"{robot_state['gripper_z']} / {robot_state['gripper_jaw']}",
@@ -339,6 +375,7 @@ async def handler(websocket: websockets.WebSocketServerProtocol):
                         ok = await asyncio.to_thread(protocol.connect_rtu, com_port, slave)
 
                 link_state["last_ya_time"] = None  # wait for fresh YA after (re)connect
+                home_state["pos_offset_deg"] = 0.0  # drop any stale set_home zero on (re)connect
 
                 await websocket.send(json.dumps({
                     "mode": "Connect",
@@ -358,6 +395,8 @@ async def handler(websocket: websockets.WebSocketServerProtocol):
                 elif action == "set_home":  # WRITE 0x01
                     async with modbus_lock:
                         await asyncio.to_thread(protocol.write_base_system_status, "set_home")
+                    # Zero the base-system UI at this instant (WS path only; LSL stays raw).
+                    home_state["pos_offset_deg"] = float(protocol.theta_actual_pos)
                     continue
 
             # ---------------- MANUAL / JOG ----------------
