@@ -7,10 +7,11 @@ of two system working together.
 
 1. **Base System** for student to integrate with their robot as 
 the task/command provider.
+
 2. **Verification System** for lecturer to evaluate the developed robot performance
 in the demo day of the course.
 
-The full project implementation is available in `GitHub <https://github.com/Lattawat/FRA263-Demo_Software/tree/main/>`.
+The full project implementation is available in `GitHub <https://github.com/Lattawat/FRA263-Demo_Software/tree/main/>`_.
 
 ..
    Check out the :doc:`usage` section for further information, including
@@ -27,6 +28,8 @@ Contents
 
    usage
    api
-   System Architecture and Overview
+   system_overview
+   Installation
+   Running
    Base System
    Verification System
