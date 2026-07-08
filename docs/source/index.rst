@@ -1,14 +1,21 @@
-Welcome to Lumache's documentation!
+FRA263/4 Demo Software Development for developers
 ===================================
 
-**Lumache** (/lu'make/) is a Python library for cooks and food lovers
-that creates recipes mixing random ingredients.
-It pulls data from the `Open Food Facts database <https://world.openfoodfacts.org/>`_
-and offers a *simple* and *intuitive* API.
+**Demo Software** is a system for using with the project in the FRA263/4 
+course at Institute of Field Robotics (FIBO). This system are consisting
+of two system working together.
 
-Check out the :doc:`usage` section for further information, including
-how to :ref:`installation` the project.
+1. **Base System** for student to integrate with their robot as 
+the task/command provider.
+2. **Verification System** for lecturer to evaluate the developed robot performance
+in the demo day of the course.
 
+The full project implementation is available in `GitHub <https://github.com/Lattawat/FRA263-Demo_Software/tree/main/>`.
+
+..
+   Check out the :doc:`usage` section for further information, including
+   how to :ref:`installation` the project.
+   
 .. note::
 
    This project is under active development.
@@ -20,3 +27,6 @@ Contents
 
    usage
    api
+   System Architecture and Overview
+   Base System
+   Verification System
