@@ -14,14 +14,14 @@ The software has **two systems that work together**:
 2. **Verification System** — the part the *lecturer* uses on demo day. It measures the
    robot with an encoder and evaluates its performance automatically.
 
-**Tech stack at a glance:**
+**Tech stack:**
 
 - Python (asyncio) for the Base System back-end.
 - React web UI in Docker for the front-end.
 - ROS 2 Jazzy + micro-ROS for the Verification System.
 - The links between parts use Modbus RTU, WebSocket, and LSL.
 
-**Repository map** — where each part lives in the code:
+**GitHub Repository map**:
 
 .. list-table::
    :header-rows: 1
@@ -112,24 +112,28 @@ Every link in the system, with its protocol, address, and payload:
 
 .. list-table::
    :header-rows: 1
-   :widths: 26 22 26 26
+   :widths: 26 22 20 26
 
    * - Link (from ↔ to)
      - Protocol
      - Address / Port
      - Payload
    * - Robot ↔ Base back-end
-     - Modbus RTU over USB serial
-     - ``/dev/ttyACM*``, 230400 8-E-1, slave 21
+     - Modbus RTU (USB serial)
+     - - ``/dev/ttyACM*``
+       - baudrate 230400
+       - 8-E-1
+       - slave address 21
      - 16-bit registers ``0x00``–``0x31``
    * - Front-end ↔ Base back-end
      - WebSocket (JSON)
      - ``ws://localhost:8765``
-     - ``STATS`` messages down; ``{mode, action}`` commands up
+     - - ``STATS`` messages to UI
+       - ``{mode, action}`` commands from user to Back-end
    * - Base back-end → Verification
      - LSL stream ``ActualStates``
-     - LAN (found by stream name)
-     - 3 numbers: position, speed, accel (25 Hz)
+     - LAN
+     - Robot's actual states: position, speed, accel
    * - Base back-end → Verification
      - LSL stream ``EventTrigger``
      - LAN
@@ -137,19 +141,24 @@ Every link in the system, with its protocol, address, and payload:
    * - Verification → robot side
      - LSL stream ``EstimatedStates``
      - LAN
-     - 3 numbers: filtered position, velocity, accel
+     - Estimated states: position, velocity, accel
    * - Inside Verification
      - ROS 2 topics/services (DDS)
-     - namespace ``/G<N>/`` (per group)
+     - same network and ROS_DOMAIN_ID
      - ``EncoderRaw``, ``EncoderState``, ``EventTrigger``, ``ExperimentEval``
    * - Teensy ↔ micro_ros_agent
-     - micro-ROS over serial
-     - ``/dev/ttyACM0``, baudrate 115200
+     - micro-ROS (USB serial)
+     - - ``/dev/ttyACM*``
+       - baudrate 115200
      - ``/encoder_raw`` messages
    * - Browser ↔ web_visualizer
      - HTTP + WebSocket (JSON)
-     - HTTP port 8000, WS port 9090
-     - live JSON: states, events, evaluation
+     - - ``http://localhost:8000``
+       - ``ws://localhost:9090``
+     - - Robot's actual states
+       - Estimated states
+       - Events triggering signal
+       - Live evaluation data 
 
 **Base ↔ front-end message shapes.** The front-end and back-end talk over the local
 WebSocket (``ws://localhost:8765``) using JSON. The UI sends **command envelopes** like
