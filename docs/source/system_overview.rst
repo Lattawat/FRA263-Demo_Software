@@ -108,8 +108,6 @@ the robot's performance and report it back to the user through the web UI also.
 Data Flow & Protocols
 ~~~~~~~~~~~~~~~~~~~~~~~
 
-Every link in the system, with its protocol, address, and payload:
-
 .. list-table::
    :header-rows: 1
    :widths: 26 22 20 26
@@ -118,61 +116,84 @@ Every link in the system, with its protocol, address, and payload:
      - Protocol
      - Address / Port
      - Payload
-   * - Robot ↔ Base back-end
+   * - Robot ↔ Base System back-end
      - Modbus RTU (USB serial)
-     - - ``/dev/ttyACM*``
-       - baudrate 230400
-       - 8-E-1
-       - slave address 21
+     - 
+       * ``/dev/ttyACM*``
+       * baudrate 230400
+       * 8-E-1
+       * slave address 21
      - 16-bit registers ``0x00``–``0x31``
-   * - Front-end ↔ Base back-end
+   * - Base System Front-end ↔ back-end
      - WebSocket (JSON)
      - ``ws://localhost:8765``
-     - - ``STATS`` messages to UI
-       - ``{mode, action}`` commands from user to Back-end
-   * - Base back-end → Verification
-     - LSL stream ``ActualStates``
+     - 
+        * ``STATS`` messages to UI
+        * ``{mode, action}`` commands from user to Back-end
+   * - Base System back-end → Verification System
+     - 
+        * LSL stream ``ActualStates``
+        * LSL stream ``EventTrigger``
+
      - LAN
-     - Robot's actual states: position, speed, accel
-   * - Base back-end → Verification
-     - LSL stream ``EventTrigger``
-     - LAN
-     - one JSON message per user action
-   * - Verification → robot side
+     - 
+        * Robot's actual states: position, speed, accel
+        * one JSON message per user action
+   * - Verification System → Base System back-end
      - LSL stream ``EstimatedStates``
      - LAN
      - Estimated states: position, velocity, accel
-   * - Inside Verification
+   * - Inside Verification System
      - ROS 2 topics/services (DDS)
      - same network and ROS_DOMAIN_ID
      - ``EncoderRaw``, ``EncoderState``, ``EventTrigger``, ``ExperimentEval``
-   * - Teensy ↔ micro_ros_agent
+   * - Teensy ↔ Verification System
      - micro-ROS (USB serial)
-     - - ``/dev/ttyACM*``
-       - baudrate 115200
+     - 
+        * ``/dev/ttyACM*``
+        * baudrate 115200
      - ``/encoder_raw`` messages
-   * - Browser ↔ web_visualizer
+   * - Verification System webUI ↔ Verification System Back-end (web_visualizer)
      - HTTP + WebSocket (JSON)
-     - - ``http://localhost:8000``
-       - ``ws://localhost:9090``
-     - - Robot's actual states
-       - Estimated states
-       - Events triggering signal
-       - Live evaluation data 
+     - 
+        * ``http://localhost:8000``
+        * ``ws://localhost:9090``
+     - 
+        * Robot's actual states
+        * Estimated states
+        * Events triggering signal
+        * Live evaluation data 
 
-**Base ↔ front-end message shapes.** The front-end and back-end talk over the local
-WebSocket (``ws://localhost:8765``) using JSON. The UI sends **command envelopes** like
-``{"mode": "Manual", "action": "jog", "value": 10, "direction": "CCW"}``; the back-end
-sends **status messages** like
-``{"type": "STATS", "pos": 12.3, "speed": 4.5, "mode": "...", "heartbeat_alive": true}``.
-The full Modbus register map — every address the back-end writes and reads — is in the
-:doc:`Base System` page.
+..  AI suggestion (I don't think it is needed)
+    **Base ↔ front-end message shapes.** The front-end and back-end talk over the local
+    WebSocket (``ws://localhost:8765``) using JSON. The UI sends **command envelopes** like
+    ``{"mode": "Manual", "action": "jog", "value": 10, "direction": "CCW"}``; the back-end
+    sends **status messages** like
+    ``{"type": "STATS", "pos": 12.3, "speed": 4.5, "mode": "...", "heartbeat_alive": true}``.
+    The full Modbus register map — every address the back-end writes and reads — is in the
+    :doc:`Base System` page.
 
-**Running many groups on one network.** One ``group_number = N`` keeps robot setups apart.
-It puts the Verification System's ROS topics under the namespace ``/G<N>/``, adds a ``_N``
-suffix to the LSL stream names, and selects the group's row in ``criteria.yaml``. The web
-ports stay fixed (HTTP 8000, WS 9090). ``group_number 0`` is the default single-group case:
-namespace ``/G0/``, no LSL suffix, and the ``default`` criteria row.
+    One ``group_number = N`` keeps robot setups apart.
+    It puts the Verification System's ROS topics under the namespace ``/G<N>/``, adds a ``_N``
+    suffix to the LSL stream names, and selects the group's row in ``criteria.yaml``. The web
+    ports stay fixed (HTTP 8000, WS 9090). ``group_number 0`` is the default single-group case:
+    namespace ``/G0/``, no LSL suffix, and the ``default`` criteria row.
+
+**Methods to handle multiple machines in the same network** 
+* Each Back-end and Front-end is on the same local machine, so there is no problem
+* ROS message of the Verification System will be published under the namespace ``/G<N>/``, 
+specified by a launch argument ``--group-number``. The default is 0.
+* LSL streams name is modified by adding a suffix ``_N``, where N is the same launch argument.
+* The criteria which is used in the evaluation node will be depended on the ``--group-number`` 
+argument also. You can check it out in the ``/claude-visualizer-ws/src/config/criteria.yaml``.
+
+.. note::
+
+    ``group_number 0`` is the default single-group case:
+    * namespace ``/G0/``
+    * no LSL suffix
+    * ``default`` criteria row.
+
 
 Base System
 -----------
