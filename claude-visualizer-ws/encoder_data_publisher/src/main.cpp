@@ -6,6 +6,21 @@
 #define EN_RES 4096.0
 #define ticks2rad(ticks) ((ticks/EN_RES)*2.0*PI)
 
+// ── Group namespace ─────────────────────────────────────────────────────────
+// Set GROUP_NUMBER per group and reflash. The node is placed under the ROS
+// namespace /G<GROUP_NUMBER>, so it publishes /G<N>/encoder_raw — matching the
+// namespaced encoder_reader (which subscribes to the relative "encoder_raw"
+// under /G<N> from `group_number:=N`). GROUP_NUMBER here MUST match that N.
+// The two-level STR/STR2 stringize turns the number's VALUE (not its name)
+// into a string, then adjacent string literals concatenate at compile time.
+#define GROUP_NUMBER 0
+#define STR2(x) #x
+#define STR(x)  STR2(x)
+#define ROS_NAMESPACE "G" STR(GROUP_NUMBER)     // → "G0", "G5", …
+// If a given micro-ROS build does not expand the relative topic under the node
+// namespace, fall back to an absolute topic instead:
+//   #define ENCODER_TOPIC "/G" STR(GROUP_NUMBER) "/encoder_raw"
+
 // #define SERIAL_DEBUG true
 
 #include <micro_ros_platformio.h>
@@ -108,9 +123,10 @@ void setup(){
 
   //create node
   RCCHECK(rclc_node_init_default(
-      &node, 
-      "encoder_data_publisher", 
-      "", 
+      &node,
+      "encoder_data_publisher",
+      // "",                              // was root namespace
+      ROS_NAMESPACE,                      // now /G<GROUP_NUMBER>
       &support
     )
   );
@@ -120,10 +136,11 @@ void setup(){
   
   //create publisher
   RCCHECK(rclc_publisher_init_default(
-      &encoder_data_publisher, 
-      &node, 
+      &encoder_data_publisher,
+      &node,
       ROSIDL_GET_MSG_TYPE_SUPPORT(claude_visualizer_interface, msg, EncoderRaw),
-      "/encoder_raw"
+      // "/encoder_raw"                   // was absolute (ignored the namespace)
+      "encoder_raw"                       // relative → /G<GROUP_NUMBER>/encoder_raw
     )
   );
 
