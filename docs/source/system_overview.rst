@@ -1,10 +1,10 @@
 System Architecture & Overview
 ==============================
 
-This page is a **map of the whole project for the next developer**. It explains what
-each part does, how the parts talk to each other, and the words you need to know. It
-stays high-level on purpose. The deep detail (for example, the full Modbus register
-map) lives in the :doc:`Base System` and :doc:`Verification System` pages.
+.. note::
+
+   This page explains the **overview** of the system. For the implementation details, see
+   the :doc:`Base System` and :doc:`verification_system` pages.
 
 The software has **two systems that work together**:
 
@@ -12,11 +12,14 @@ The software has **two systems that work together**:
    user interface (UI) and a command layer, so they can drive the robot without
    building their own interface.
 2. **Verification System** — the part the *lecturer* uses on demo day. It measures the
-   robot with an encoder and scores its performance automatically.
+   robot with an encoder and evaluates its performance automatically.
 
-**Tech stack at a glance:** Python (asyncio) for the Base System back-end · React web UI
-in Docker for the front-end · ROS 2 Jazzy + micro-ROS for the Verification System ·
-links between parts use Modbus RTU, WebSocket, and LSL.
+**Tech stack at a glance:**
+
+- Python (asyncio) for the Base System back-end.
+- React web UI in Docker for the front-end.
+- ROS 2 Jazzy + micro-ROS for the Verification System.
+- The links between parts use Modbus RTU, WebSocket, and LSL.
 
 **Repository map** — where each part lives in the code:
 
@@ -31,47 +34,76 @@ links between parts use Modbus RTU, WebSocket, and LSL.
    * - ``FRA263-264_BaseSystem_FrontEnd/``
      - Base System front-end: the web UI, shipped as a Docker image and an ``.exe``.
    * - ``claude-visualizer-ws/``
-     - Verification System: a ROS 2 Jazzy workspace (four nodes + Teensy firmware).
+     - Verification System: a ROS 2 Jazzy workspace (four nodes + Teensy firmware + Mock UI for debugging).
    * - ``docs/``
      - This documentation (Sphinx / ReadTheDocs).
 
 System Architecture
 -------------------
 
-The diagram below shows how the pieces connect. Each arrow is one link, with its
-protocol written on it.
+The block diagram below shows how the pieces connect. Each arrow is one link. The text on
+an arrow is the protocol, and the topic, stream, or message it carries — so you can read
+each block's inputs and outputs straight from the diagram.
 
 .. code-block:: text
 
+   ===================  BASE SYSTEM  ===================
+
    Robot (STM32)
-      |
-      |  Modbus RTU  (USB serial, 230400 8-E-1, slave address 21)
-      v
+     |  ^
+     |  |  Modbus RTU over USB serial  (registers 0x00-0x31, 230400 8-E-1, slave 21)
+     v  |
    Base System Back-End  (Python, asyncio)
-      |
-      +-- WebSocket + JSON  (ws://localhost:8765) --> Base System Front-End
-      |                                               (Web UI in a browser, port 3000)
-      |
-      +-- LSL streams over the LAN -----------------> Verification System (ROS 2 Jazzy)
-              out:  ActualStates, EventTrigger
-              in :  EstimatedStates
+     |
+     |--- WebSocket + JSON (ws://localhost:8765) --> Front-End UI (browser, port 3000)
+     |        down: STATS status      up: {mode, action} commands
+     |
+     '--- LSL over the LAN --> Verification System
+              out: ActualStates, EventTrigger      in: EstimatedStates
 
 
-   Verification System pipeline (ROS 2 Jazzy):
+   ===============  VERIFICATION SYSTEM  ===============
+   ===  ROS 2 Jazzy -- all topics live under namespace /G<N>/  ===
 
-   Encoder      micro_ros_agent      Kalman Filter        web_visualizer ---> Browser UI
-   (Teensy) --> (/encoder_raw)  -->  (/estimated_states) -->    |          (HTTP port 8000,
-                                                                |           WS   port 9090)
-                                                                v
-                                                     experiment_evaluator
-                                                     (/eval_live, /eval_summary)
+   Encoder (Teensy 4.1)
+     |  micro-ROS over serial (baudrate 115200)
+     v
+   micro_ros_agent
+     |  out: /encoder_raw  (EncoderRaw)
+     v
+   encoder_reader  (Kalman filter)
+     |  Kalman gives velocity + acceleration; position = raw angle - zero
+     |  out: /estimated_states  (EncoderState)
+     |
+     |--> experiment_evaluator
+     |        in : /event_trigger (start/stop), /estimated_states
+     |        out: /eval_live, /eval_summary  (ExperimentEval)
+     |
+     '--> web_visualizer  (LSL <-> ROS bridge + web server)
+              in : /estimated_states, /actual_states, /event_trigger,
+                   /eval_live, /eval_summary, LSL ActualStates + EventTrigger
+              out: LSL EstimatedStates, /zero_estimated_states,
+                   WebSocket JSON --> Browser dashboard (HTTP :8000, WS :9090)
 
-In words: the **robot** talks to the **Base System back-end** over a USB cable using
-Modbus RTU. The back-end shows the robot's state in the **web UI** over a WebSocket, and
-at the same time streams the same data to the **Verification System** over the network
-using LSL. Inside the Verification System, an **encoder** measures the real motion; a
-**Kalman filter** cleans it up; the **web visualizer** shows it in a browser; and the
-**evaluator** scores the run.
+   Browser dashboard: uPlot charts, live evaluation, Zero / Skip / Pos-Sync / CSV
+
+Brief description: the robot talks to the Base System over a USB cable using Modbus RTU.
+The back-end of the Base System reads the robot's data (``ActualStates``) and sends it to
+the web UI over a WebSocket, and at the same time streams the ``ActualStates`` to the
+Verification System over the network using LSL (Lab Streaming Layer library).
+
+The Verification System has an encoder to measure the real position of the robot, a Kalman
+Filter to estimate the states, and the node (web visualizer) to gather all data and
+visualize it in another web UI. Lastly, the evaluator node runs in parallel to evaluate
+the robot's performance and report it back to the user through the web UI also.
+
+..  old version
+    In words: the **robot** talks to the **Base System back-end** over a USB cable using
+    Modbus RTU. The back-end shows the robot's state in the **web UI** over a WebSocket, and
+    at the same time streams the same data to the **Verification System** over the network
+    using LSL. Inside the Verification System, an **encoder** measures the real motion; a
+    **Kalman filter** cleans it up; the **web visualizer** shows it in a browser; and the
+    **evaluator** scores the run.
 
 Data Flow & Protocols
 ~~~~~~~~~~~~~~~~~~~~~~~
@@ -108,7 +140,7 @@ Every link in the system, with its protocol, address, and payload:
      - 3 numbers: filtered position, velocity, accel
    * - Inside Verification
      - ROS 2 topics/services (DDS)
-     - ``ROS_DOMAIN_ID=156``
+     - namespace ``/G<N>/`` (per group)
      - ``EncoderRaw``, ``EncoderState``, ``EventTrigger``, ``ExperimentEval``
    * - Teensy ↔ micro_ros_agent
      - micro-ROS over serial
@@ -119,10 +151,19 @@ Every link in the system, with its protocol, address, and payload:
      - HTTP port 8000, WS port 9090
      - live JSON: states, events, evaluation
 
-**Running many pairs on one network.** The ``pair_id`` setting keeps two robot setups
-apart. For pair *N*, it adds a ``_N`` suffix to the LSL stream names, picks the web ports
-(``9000+N`` and ``8000+N``), and sets the ``ROS_DOMAIN_ID`` so the ROS 2 traffic does not
-mix. ``pair_id 0`` means the legacy single-pair defaults (no suffix, ports 9090 / 8000).
+**Base ↔ front-end message shapes.** The front-end and back-end talk over the local
+WebSocket (``ws://localhost:8765``) using JSON. The UI sends **command envelopes** like
+``{"mode": "Manual", "action": "jog", "value": 10, "direction": "CCW"}``; the back-end
+sends **status messages** like
+``{"type": "STATS", "pos": 12.3, "speed": 4.5, "mode": "...", "heartbeat_alive": true}``.
+The full Modbus register map — every address the back-end writes and reads — is in the
+:doc:`Base System` page.
+
+**Running many groups on one network.** One ``group_number = N`` keeps robot setups apart.
+It puts the Verification System's ROS topics under the namespace ``/G<N>/``, adds a ``_N``
+suffix to the LSL stream names, and selects the group's row in ``criteria.yaml``. The web
+ports stay fixed (HTTP 8000, WS 9090). ``group_number 0`` is the default single-group case:
+namespace ``/G0/``, no LSL suffix, and the ``default`` criteria row.
 
 Base System
 -----------
@@ -142,27 +183,23 @@ status back, and shares the data with the Verification System.
 **Functions and features:**
 
 1. **Built with Python asyncio.** It runs three independent loops at fixed rates, so one
-   slow task does not block the others.
-2. **Heartbeat.** It reads register ``0x00`` at 5 Hz. When the robot writes **YA (22881)**,
-   the back-end writes **HI (18537)** back. If YA stops arriving in time, the UI shows the
-   link as "not alive", even when the cable is still plugged in.
-3. **Status poll.** It reads the register block ``0x00``–``0x31`` at 25 Hz to get position,
-   speed, gripper state, mode, and the emergency flag.
-4. **WebSocket command handling.** It receives JSON commands from the UI — Home, Manual /
-   Jog, Auto (pick-and-place or point-to-point), Test (performance or precision), and
-   Stop — and writes the matching Modbus registers.
+   slow task does not block the others: a **5 Hz** heartbeat, a **25 Hz** status poll, and
+   a **25 Hz** broadcast to the web UI and the LSL stream.
+2. **Heartbeat.** It reads register ``0x00`` on the robot controller (the STM32 MCU) at
+   5 Hz. When the robot writes **YA (22881)**, the back-end writes **HI (18537)** back. If
+   YA stops arriving in time, the UI shows the link as "not alive", even when the cable is
+   still plugged in.
+3. **Status poll.** It reads the register block ``0x00``–``0x31`` on the robot controller
+   (the STM32 MCU) at 25 Hz to get position, speed, gripper state, mode, and the emergency
+   flag.
+4. **Command handling.** It receives messages from the UI in JSON format to command the
+   robot — Home, Manual / Jog, Auto (pick-and-place or point-to-point), Test (performance
+   or precision), and Stop — and writes the matching Modbus registers.
 5. **Verification link.** It publishes two LSL streams: ``ActualStates`` (position, speed,
    accel) and ``EventTrigger`` (a JSON message for every user action), so the Verification
-   System can score the run.
-6. **Multi-pair support.** The ``--pair_id N`` option adds a ``_N`` suffix to the LSL
-   stream names, so many robot pairs can run on one LAN without mixing their data.
-7. **Set-home.** "Set home" zeroes the position shown in the UI only; the LSL data stays
-   raw, so the Verification System keeps the true reading.
-
-**Inputs:** JSON commands from the web UI; Modbus register reads from the robot.
-
-**Outputs:** Modbus register writes to the robot; ``STATS`` messages to the web UI; LSL
-samples to the Verification System.
+   System can detect the robot's action and evaluate its performance.
+6. **Multi-group support.** Setting the group number ``N`` adds a ``_N`` suffix to the LSL
+   stream names, so many groups can run on one LAN without mixing their data.
 
 Front-end
 ~~~~~~~~~
@@ -171,6 +208,8 @@ Front-end
 
    *Author to complete.* The front-end is shipped as a compiled Docker image and an
    ``.exe`` (no source in this repository), so this subsection is left as a skeleton.
+
+``FRA263-264_BaseSystem_FrontEnd/HowToUse.pdf``
 
 .. Objective of the front-end (author to write).
 
@@ -181,19 +220,6 @@ Front-end
    - ``FRA263-264_BaseSystem_FrontEnd/HowToUse.pdf``
    - "How to use Basesystem 101" (Canva): https://canva.link/9pr3jhzbh18pxbn
 
-Internal communication protocol
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-The front-end and back-end talk over a **local WebSocket** using **JSON messages**.
-
-- The UI sends **command envelopes** like
-  ``{"mode": "Manual", "action": "jog", "value": 10, "direction": "CCW"}``.
-- The back-end sends **status messages** like
-  ``{"type": "STATS", "pos": 12.3, "speed": 4.5, "mode": "...", "heartbeat_alive": true}``.
-
-The full Modbus register map — every address the back-end writes and reads — is
-documented in the :doc:`Base System` page.
-
 Verification System
 -------------------
 
@@ -203,80 +229,97 @@ reads the real position with an **encoder**, estimates velocity and acceleration
 **Kalman filter**, shows the data on a web UI, and checks the robot's performance against
 set limits.
 
-The system is split into **four ROS 2 nodes**.
+Back-end
+~~~~~~~~
+
+The back-end is split into **four ROS 2 nodes**.
 
 micro_ros_agent (Teensy bridge)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-**Role.** It connects the Teensy 4.1 board to ROS 2. The Teensy firmware reads a
-4096-count quadrature encoder and publishes the raw ticks. The agent carries these
-messages from the board (over USB serial, baudrate 115200) into the ROS 2 network.
+**Role.** It connects the Teensy 4.1 board to ROS 2. The Teensy firmware reads an
+8192-count quadrature encoder and publishes the raw ticks. The agent carries these
+messages from the board (over USB serial, baudrate 115200) into the ROS 2 network, on the
+``/encoder_raw`` topic (``EncoderRaw``: ticks, raw position, ``dt_us``) at about 100 Hz.
 
-**Features.** In mock mode (no hardware), ``mock_encoder.py`` replaces the Teensy and
-publishes synthetic ticks, so the pipeline can run on any machine.
-
-- **Input:** encoder hardware (ticks), read by the Teensy firmware.
-- **Output:** the ``/encoder_raw`` topic (``EncoderRaw``: ticks, raw position, ``dt_us``),
-  at about 100 Hz.
+**Features.** For hardware-free development, ``mock_ui.py`` (a Tkinter GUI) replaces both
+the Teensy **and** the robot: it publishes ``/encoder_raw`` and ``/event_trigger`` and both
+LSL streams, so the whole pipeline can run on any machine. (The older ``mock_encoder.py``
+only replaces the Teensy and is now deprecated.)
 
 Kalman Filter node
-~~~~~~~~~~~~~~~~~~~
+^^^^^^^^^^^^^^^^^^
 
-**Role** (node name ``encoder_reader``). It turns the noisy raw ticks into smooth
-position, velocity, and acceleration.
+**Role** (node name ``encoder_reader``). It turns the noisy raw ticks into smooth velocity
+and acceleration, and a clean position.
 
 **Model.** It uses a **constant-jerk Kalman filter**. The state is
 ``[position, velocity, acceleration, jerk]``. Each new tick reading is used to predict and
-then correct the state. The process- and measurement-noise values (``Q`` and ``R``) are
-tuned in ``params.yaml``. The node can also re-zero its position on request (topic
-``/zero_estimated_states``), so every downstream consumer shares the same zero point.
-
-- **Input:** the ``/encoder_raw`` topic.
-- **Output:** the ``/estimated_states`` topic (``EncoderState``: position, velocity,
-  acceleration, plus their variances and the raw tick count).
+then correct the state. The **velocity and acceleration** come from the filter; the
+published **position** is the raw encoder angle minus a zero offset (not the filter's
+position state). The process- and measurement-noise values (``Q`` and ``R``) are tuned in
+``params.yaml``. The node can re-zero its position on request (topic
+``/zero_estimated_states``), so every subscriber shares the same zero point. It reads
+``/encoder_raw`` and publishes ``/estimated_states`` (``EncoderState``: position, velocity,
+acceleration, plus their variances and the raw tick count).
 
 Web Visualizer node
-~~~~~~~~~~~~~~~~~~~~
+^^^^^^^^^^^^^^^^^^^
 
 **Role** (node name ``web_visualizer``). It is the bridge and the web server. It connects
 three worlds — LSL, ROS 2, and the browser.
 
 **Features:**
 
-- Brings the Base System's LSL streams (``ActualStates``, ``EventTrigger``) into ROS 2
-  topics.
+- Reads the data from the Base System's LSL streams (``ActualStates``, ``EventTrigger``)
+  and brings it into ROS 2 topics.
 - Sends the Kalman result (``/estimated_states``) back out as an LSL stream
   (``EstimatedStates``), so the robot side can read the filtered data.
-- Serves the verifier web page over **HTTP (port 8000)** and streams live JSON to the
-  browser over **WebSocket (port 9090)**.
+- Serves the verifier web page over **HTTP (localhost:8000)** and streams live JSON to the
+  browser over **WebSocket (localhost:9090)**.
 - Handles browser commands: zero, stop experiment, skip iteration, update criteria, and
   time / position sync.
 
-- **Input:** LSL streams and ROS topics (``/estimated_states``, ``/actual_states``,
-  ``/event_trigger``, ``/eval_live``, ``/eval_summary``).
-- **Output:** JSON to the browser; the ``/actual_states`` and ``/event_trigger`` ROS
-  topics; and the ``EstimatedStates`` LSL outlet.
-
 System Evaluator node
-~~~~~~~~~~~~~~~~~~~~~~
+^^^^^^^^^^^^^^^^^^^^^
 
-**Role** (node name ``experiment_evaluator``). It watches a run and scores it
+**Role** (node name ``experiment_evaluator``). It watches a run and evaluates it
 automatically.
 
 **Features.** It waits for a start event — one of ``point_to_point``, ``pick_place``,
-``performance``, or ``precision`` — then measures the robot from the estimated states. It
-reports live numbers during the run and a final **pass / fail** summary at the end. The
-pass/fail limits come from ``criteria.yaml`` (chosen by ``pair_id``) and can be changed
-during a run through the ``/update_criteria`` service. Positions are in radians; one hole
-index = 360 / 72 = 5°.
+``performance``, or ``precision`` — then evaluates the robot from the estimated states.
+This node also provides the data of the experiments — including initial and target
+position, current error, and so on — to the UI to help the visualization. The pass/fail
+limits can be configured in two ways: (1) directly in the UI, and (2) in ``criteria.yaml``.
+
+..  old version
+    measures the robot from the estimated states. It
+    reports live numbers during the run and a final **pass / fail** summary at the end. The
+    pass/fail limits come from ``criteria.yaml`` (chosen by ``pair_id``) and can be changed
+    during a run through the ``/update_criteria`` service. Positions are in radians; one hole
+    index = 360 / 72 = 5°.
 
 Typical metrics: settling time, overshoot (%), final error, peak speed and acceleration,
 and precision (the mean and spread of repeated stops).
 
-- **Input:** the ``/event_trigger`` topic (start / stop) and the ``/estimated_states``
-  topic.
-- **Output:** the ``/eval_live`` topic (live metrics) and the ``/eval_summary`` topic
-  (final result with pass/fail).
+Front-end
+~~~~~~~~~
+
+**Role.** The front-end is the browser dashboard, served by the web visualizer node. It
+shows the live data and the evaluation results, so the lecturer can watch the robot's
+performance in real time.
+
+**Features:**
+
+- Live **uPlot** charts of the actual and estimated position, velocity, and acceleration
+  (updated about 30 times per second).
+- An **evaluation panel** that shows the live metrics and the final pass/fail result from
+  the evaluator node.
+- A **Criteria tab** to edit the pass/fail limits live (sent to the evaluator node).
+- Controls for **Zero** (re-home the position), **Skip Iteration** (drop a stuck
+  waypoint / trial), **Pos Sync**, and **CSV export** of the recorded data.
+- It finds the right WebSocket port itself (by reading ``/config.json``), so it always
+  connects back to whichever machine served the page.
 
 Notation
 --------
@@ -313,10 +356,12 @@ Constant-jerk Kalman filter
     is roughly constant between samples. This gives smooth position, velocity, and
     acceleration estimates from noisy encoder ticks.
 
-pair_id / session / ROS_DOMAIN_ID
-    Settings that keep two robot setups apart on one network. ``pair_id N`` adds a ``_N``
-    suffix to the LSL stream names, picks the web ports (``9000+N`` / ``8000+N``), and
-    selects the ``ROS_DOMAIN_ID`` so the ROS 2 (DDS) traffic does not mix.
+group_number / namespace
+    Settings that keep robot setups apart on one network. A single ``group_number = N``
+    puts the Verification System's ROS topics under the namespace ``/G<N>/``, adds a ``_N``
+    suffix to the LSL stream names (e.g. ``ActualStates_5``), and selects the group's row
+    in ``criteria.yaml``. The web ports stay fixed (HTTP 8000, WS 9090). ``group_number 0``
+    is the default: namespace ``/G0/``, no LSL suffix, and the ``default`` criteria.
 
 Units
     Position in **radians (rad)**, velocity in **rad/s**, acceleration in **rad/s²**.

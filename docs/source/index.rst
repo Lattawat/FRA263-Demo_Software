@@ -27,9 +27,7 @@ Contents
 .. toctree::
 
    usage
-   api
    system_overview
-   Installation
-   Running
+   Tutorial
    Base System
-   Verification System
+   verification_system
