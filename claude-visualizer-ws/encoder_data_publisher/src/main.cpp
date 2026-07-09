@@ -3,7 +3,7 @@
 #define LED_PIN 13
 #define EN_CH_A 7
 #define EN_CH_B 6
-#define EN_RES 4096.0
+#define EN_RES 8192.0
 #define ticks2rad(ticks) ((ticks/EN_RES)*2.0*PI)
 
 // ── Group namespace ─────────────────────────────────────────────────────────
@@ -13,7 +13,7 @@
 // under /G<N> from `group_number:=N`). GROUP_NUMBER here MUST match that N.
 // The two-level STR/STR2 stringize turns the number's VALUE (not its name)
 // into a string, then adjacent string literals concatenate at compile time.
-#define GROUP_NUMBER 0
+#define GROUP_NUMBER 1
 #define STR2(x) #x
 #define STR(x)  STR2(x)
 #define ROS_NAMESPACE "G" STR(GROUP_NUMBER)     // → "G0", "G5", …

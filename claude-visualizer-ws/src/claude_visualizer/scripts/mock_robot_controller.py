@@ -266,25 +266,28 @@ def main() -> int:
              "(default: auto-locate via ament share or repo).",
     )
     parser.add_argument(
-        "--pair-id",
+        # "--pair-id",
+        "--group-number",
         default=None,
-        help="Per-pair LSL suffix (overrides CV_PAIR_ID env). 0/empty = no suffix.",
+        help="Group number N: LSL suffix (_N, none for 0). Overrides CV_GROUP_NUMBER env.",
     )
     args = parser.parse_args()
 
     cfg = load_config(args.config)
 
-    # Per-pair LSL isolation: append "_<N>" to stream name + source_id so this
+    # Per-group LSL isolation: append "_<N>" to stream name + source_id so this
     # robot's streams resolve only on the matching verifier. CLI wins over env.
-    pair_id = args.pair_id if args.pair_id is not None else os.environ.get("CV_PAIR_ID", "")
-    pair_id = str(pair_id).strip()
-    suffix = f"_{pair_id}" if pair_id and pair_id != "0" else ""
+    # (Suffix behaviour UNCHANGED — only the identifier name is renamed.)
+    # pair_id = args.pair_id if args.pair_id is not None else os.environ.get("CV_PAIR_ID", "")
+    group_number = args.group_number if args.group_number is not None else os.environ.get("CV_GROUP_NUMBER", "")
+    group_number = str(group_number).strip()
+    suffix = f"_{group_number}" if group_number and group_number != "0" else ""
     if suffix:
         for _s in (cfg["lsl_params"]["actual_states_stream"],
                    cfg["lsl_params"]["event_trigger_stream"]):
             _s["name"]      = _s.get("name", "") + suffix
             _s["source_id"] = _s.get("source_id", "") + suffix
-        print(f"[mock_robot_controller] LSL pair suffix: {suffix}", file=sys.stderr)
+        print(f"[mock_robot_controller] LSL group suffix: {suffix}", file=sys.stderr)
     waveform_name = args.waveform or cfg.get("waveform_config", {}).get("type", "trapezoid")
     rate_hz = float(cfg.get("lsl_params", {}).get("actual_states_stream", {}).get("sampling_rate_hz", 100.0))
     waveform = build_waveform(waveform_name, cfg["waveform_config"])

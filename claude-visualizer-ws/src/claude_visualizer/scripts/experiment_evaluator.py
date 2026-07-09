@@ -37,22 +37,25 @@ class ExperimentEvaluator(Node):
         super().__init__("experiment_evaluator")
 
         # ── parameters ───────────────────────────────────────────────────────
-        # self.declare_parameter("pair_id", "0")
-        # Launch passes pair_id via LaunchConfiguration; "11" is type-inferred to INT,
-        # while the default/standalone case is STR — dynamic_typing accepts either
-        # (the criteria loader normalizes with str()). Fixes InvalidParameterTypeException.
+        # self.declare_parameter("pair_id", "0", ParameterDescriptor(dynamic_typing=True))
+        # group_number (was pair_id): launch passes it via LaunchConfiguration; "5" is
+        # type-inferred to INT, while the default/standalone case is STR — dynamic_typing
+        # accepts either (the criteria loader normalizes with str()).
         self.declare_parameter(
-            "pair_id", "0", ParameterDescriptor(dynamic_typing=True)
+            "group_number", "0", ParameterDescriptor(dynamic_typing=True)
         )
         self.declare_parameter("criteria_file_path", "")
 
-        pair_id       = self.get_parameter("pair_id").value
+        # pair_id       = self.get_parameter("pair_id").value
+        group_number  = self.get_parameter("group_number").value
         criteria_file = self.get_parameter("criteria_file_path").value
 
         # ── load criteria ────────────────────────────────────────────────────
-        self._criteria = self._load_criteria(criteria_file, pair_id)
+        # self._criteria = self._load_criteria(criteria_file, pair_id)
+        self._criteria = self._load_criteria(criteria_file, group_number)
         self.get_logger().info(
-            f"[ExperimentEvaluator] pair_id={pair_id!r}  criteria={self._criteria}"
+            # f"[ExperimentEvaluator] pair_id={pair_id!r}  criteria={self._criteria}"
+            f"[ExperimentEvaluator] group_number={group_number!r}  criteria={self._criteria}"
         )
 
         # ── QoS ──────────────────────────────────────────────────────────────
@@ -63,26 +66,33 @@ class ExperimentEvaluator(Node):
         )
 
         # ── subscriptions ────────────────────────────────────────────────────
+        # Relative topic/service names so the node's namespace (/G<N>) is prepended.
         self._event_sub = self.create_subscription(
-            EventTrigger, "/event_trigger", self._event_trigger_cb, reliable_qos
+            # EventTrigger, "/event_trigger", self._event_trigger_cb, reliable_qos
+            EventTrigger, "event_trigger", self._event_trigger_cb, reliable_qos
         )
         self._states_sub = self.create_subscription(
-            EncoderState, "/estimated_states", self._estimated_states_cb, reliable_qos
+            # EncoderState, "/estimated_states", self._estimated_states_cb, reliable_qos
+            EncoderState, "estimated_states", self._estimated_states_cb, reliable_qos
         )
 
         # ── publishers ───────────────────────────────────────────────────────
-        self._live_pub    = self.create_publisher(ExperimentEval, "/eval_live",    reliable_qos)
-        self._summary_pub = self.create_publisher(ExperimentEval, "/eval_summary", reliable_qos)
+        # self._live_pub    = self.create_publisher(ExperimentEval, "/eval_live",    reliable_qos)
+        # self._summary_pub = self.create_publisher(ExperimentEval, "/eval_summary", reliable_qos)
+        self._live_pub    = self.create_publisher(ExperimentEval, "eval_live",    reliable_qos)
+        self._summary_pub = self.create_publisher(ExperimentEval, "eval_summary", reliable_qos)
 
         # ── service ──────────────────────────────────────────────────────────
         self._update_criteria_srv = self.create_service(
-            UpdateCriteria, "/update_criteria", self._update_criteria_cb
+            # UpdateCriteria, "/update_criteria", self._update_criteria_cb
+            UpdateCriteria, "update_criteria", self._update_criteria_cb
         )
 
         self._reset_state()
 
     # ── criteria loader ───────────────────────────────────────────────────────
-    def _load_criteria(self, path: str, pair_id: str) -> dict:
+    # def _load_criteria(self, path: str, pair_id: str) -> dict:
+    def _load_criteria(self, path: str, group_number: str) -> dict:
         default = {
             "min_speed":           0.5,
             "min_acceleration":    1.0,
@@ -105,14 +115,16 @@ class ExperimentEvaluator(Node):
         #     f"robot_id {robot_id!r} not in criteria table; using 'default'"
         # )
         # return table.get("default", default)
-        # Normalize keys to strings: YAML parses bare `11:` as an int, but pair_id
-        # arrives as a string from the ROS param. pair_id 0 / unlisted → 'default'.
+        # Normalize keys to strings: YAML parses bare `11:` as an int, but group_number
+        # arrives from the ROS param. group_number 0 / unlisted → 'default'.
         table = {str(k): v for k, v in data.get("criteria", {}).items()}
-        key = str(pair_id)
+        # key = str(pair_id)
+        key = str(group_number)
         if key in table:
             return table[key]
         self.get_logger().warn(
-            f"pair_id {pair_id!r} not in criteria table; using 'default'"
+            # f"pair_id {pair_id!r} not in criteria table; using 'default'"
+            f"group_number {group_number!r} not in criteria table; using 'default'"
         )
         return table.get("default", default)
     

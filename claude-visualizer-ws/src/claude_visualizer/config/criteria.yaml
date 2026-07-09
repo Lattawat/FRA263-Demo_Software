@@ -1,7 +1,7 @@
 criteria:
-  # Keyed by pair_id (the single setup identifier). Re-keyed from the old
-  # robot_A / robot_B names — pair_id replaces robot_id. The loader normalizes
-  # keys to strings, so 11: (int) and "11": (str) both match pair_id 11.
+  # Keyed by group_number (the single setup identifier). Keys are group numbers;
+  # the loader normalizes keys to strings, so 11: (int) and "11": (str) both match
+  # group_number 11. group_number 0 / unlisted → 'default'.
   11:                            # was robot_A
     min_speed:            1.0    # [rad/s]  performance: peak_vel must exceed this
     min_acceleration:     2.0    # [rad/s²] performance: peak_acc must exceed this
@@ -18,7 +18,7 @@ criteria:
     max_settling_time_s:  3.0
     settling_band_pct:    3.0
 
-  default:                       # fallback when pair_id not in table (incl. pair_id 0 / legacy)
+  default:                       # fallback when group_number not in table (incl. group 0)
     min_speed:            3.0
     min_acceleration:     4.0
     max_avg_error_rad:    0.1

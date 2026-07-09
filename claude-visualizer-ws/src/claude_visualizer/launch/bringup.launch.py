@@ -1,60 +1,79 @@
 """
 bringup launch file — full pipeline (Phase 1 + Phase 2)
 
-Nodes launched:
+Nodes launched (all under the ROS namespace /G<group_number>):
   1. mock_encoder    — synthetic position data (replaces Teensy)
-  2. encoder_reader  — constant-jerk Kalman filter → /encoder_state
+  2. encoder_reader  — constant-jerk Kalman filter → /G<N>/estimated_states
   3. web_visualizer  — LSL ↔ ROS 2 bridge + WebSocket server  (Phase 2)
+  4. experiment_evaluator — pass/fail scoring
 
-The WebSocket server is built into web_visualizer.py itself (via the
-`websockets` library), so there is NO separate rosbridge / foxglove node.
-The JS frontend connects to ws://<host>:<rosbridge_port>.
+Group isolation is by ROS **namespace** (not ROS_DOMAIN_ID): a single arg
+`group_number:=N` puts the whole ROS graph under /G<N>/ and selects the LSL
+stream suffix (_N) + criteria row. Default N=0 → /G0/ (there is always a
+namespace). Web ports are fixed (9090 / 8000) — different machines have
+different IPs, so per-group ports are unnecessary. The removed per-group port
+scheme is archived in docs/Per-Group Port Configuration (archived).md.
+
+──────────────────────────────────────────────────────────────────────────────
+ WHY GroupAction + PushRosNamespace (instead of `namespace=` on each Node)
+──────────────────────────────────────────────────────────────────────────────
+The "clean" alternative is to pass `namespace=["G", LaunchConfiguration(...)]`
+to every Node() and list them flat. It works — but the group boundary is
+deliberately preferred here because:
+
+  1. CORRECTNESS BY CONSTRUCTION — the namespace is declared ONCE at the group
+     boundary, so every node inside is guaranteed to inherit /G<N>/. With a
+     per-node `namespace=`, a node added later WITHOUT that kwarg silently lands
+     in the ROOT namespace — a cross-group isolation bug with no error message.
+  2. SINGLE SOURCE OF TRUTH — one place sets/changes the group namespace,
+     instead of repeating the same substitution on all four nodes.
+  3. UNIFORM SCOPE — PushRosNamespace composes cleanly with any future
+     group-scoped settings (remaps, params, nested namespaces).
+
+The trade-off (one GroupAction wrapper vs. flat list) is tiny; the isolation
+guarantee in (1) is worth it for a multi-group system.
 
 Usage:
-  ros2 launch claude_visualizer bringup.launch.py
+  ros2 launch claude_visualizer bringup.launch.py                 # group 0 → /G0/
+  ros2 launch claude_visualizer bringup.launch.py group_number:=5 # group 5 → /G5/
   ros2 launch claude_visualizer bringup.launch.py waveform:=sine
 
 ──────────────────────────────────────────────────────────────────────────────
  PHASE-1 DEBUG ROLLBACK
 ──────────────────────────────────────────────────────────────────────────────
-If you want to go back to verifying just the mock_encoder + Kalman filter
-pipeline (e.g. to re-check KF tuning in PlotJuggler), temporarily comment out
-the Phase-2 node in the returned LaunchDescription at the bottom of this file:
-
-        # web_visualizer_node,    ← comment to disable Phase 2
-
-Leave `mock_encoder_node` and `encoder_reader_node` active. Nothing else needs
-to change — params.yaml, messages, and topics stay the same.
+To verify just the mock_encoder + Kalman filter pipeline, comment out the
+web_visualizer_node line inside the GroupAction at the bottom of this file.
 ──────────────────────────────────────────────────────────────────────────────
 """
 
-import os
+# import os  # no longer needed (CV_PAIR_ID env default removed)
 
 from launch import LaunchDescription
-# from launch.actions import DeclareLaunchArgument, LogInfo
-from launch.actions import DeclareLaunchArgument, LogInfo, OpaqueFunction
+# OpaqueFunction removed — no launch-time arithmetic left (ports are fixed), so the
+# namespace/session are passed as plain substitutions instead of resolved in Python.
+# from launch.actions import DeclareLaunchArgument, LogInfo, OpaqueFunction, GroupAction
+from launch.actions import DeclareLaunchArgument, LogInfo, GroupAction
 from launch.conditions import IfCondition
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
-from launch_ros.actions import Node
+from launch_ros.actions import Node, PushRosNamespace
+from launch_ros.parameter_descriptions import ParameterValue
 from launch_ros.substitutions import FindPackageShare
 
 
-def _derive_pair(pair_id: int):
-    """Map one pair id N → (ws_port, http_port, session suffix).
-
-    N == 0 keeps the legacy single-pair defaults (9090/8000, no LSL suffix).
-    N >= 1 derives unique ports and an LSL stream suffix so multiple pairs can
-    coexist on one LAN (and even co-located on one host without port clashes).
-    """
-    if pair_id:
-        return 9000 + pair_id, 8000 + pair_id, str(pair_id)
-    return 9090, 8000, ""
+# _derive_group() is gone: the namespace is now built directly as a substitution
+# (["G", LaunchConfiguration("group_number")]) and the "group 0 → no LSL suffix"
+# rule moved into web_visualizer (_suf treats "0"/"" as no-suffix). Nothing left
+# to compute in Python at launch time.
 
 
 def generate_launch_description():
     pkg = FindPackageShare("claude_visualizer")
     params_file    = PathJoinSubstitution([pkg, "config", "params.yaml"])
     criteria_file  = PathJoinSubstitution([pkg, "config", "criteria.yaml"])
+
+    group_number = LaunchConfiguration("group_number")
+    # ROS namespace token, e.g. "G5" (or "G0" by default). Always present.
+    namespace = ["G", group_number]
 
     # ── Declare overridable arguments ────────────────────────────────────────
     waveform_arg = DeclareLaunchArgument(
@@ -63,31 +82,15 @@ def generate_launch_description():
         description="Mock encoder waveform: sine | trapezoid | step",
     )
 
-    # rosbridge_port_arg = DeclareLaunchArgument(
-    #     "rosbridge_port",
-    #     default_value="9090",
-    #     description="WebSocket port served by web_visualizer (legacy name kept "
-    #                 "to match params.yaml; no actual rosbridge process runs).",
-    # )
-
-    # Pair identity drives ROS domain isolation (via the sourced env file's
-    # ROS_DOMAIN_ID), the LSL stream suffix, and the web ports. Defaults to the
-    # CV_PAIR_ID env var set by pairs/pair<N>.env; overridable on the CLI.
-    pair_id_arg = DeclareLaunchArgument(
-        "pair_id",
-        default_value=os.environ.get("CV_PAIR_ID", "0"),
-        description="Integer pair id 0-101. Derives ws_port (9000+N), http_port "
-                    "(8000+N) and the LSL session suffix. 0 = legacy defaults "
-                    "(9090/8000, no suffix).",
+    # group_number drives the ROS namespace (/G<N>), the LSL suffix (_N) and the
+    # criteria row. CLI-only (env file removed); default 0 → /G0/.
+    group_number_arg = DeclareLaunchArgument(
+        "group_number",
+        default_value="0",
+        description="Group number N. Puts the ROS graph under /G<N>/, sets the "
+                    "LSL suffix (_N, none for 0) and selects the criteria row. "
+                    "Default 0 → /G0/.",
     )
-
-    # robot_id_arg = DeclareLaunchArgument(
-    #     "robot_id",
-    #     default_value="default",
-    #     description="Robot ID used to look up evaluation criteria in criteria.yaml.",
-    # )
-    # robot_id removed: pair_id is now the single setup identifier and also selects
-    # the criteria row (criteria.yaml is keyed by pair_id). See pair_id_arg above.
 
     use_mock_encoder_arg = DeclareLaunchArgument(
         "use_mock_encoder",
@@ -96,7 +99,7 @@ def generate_launch_description():
                     "Set to true for hardware-free mode (macOS Docker, CI).",
     )
 
-    # ── Phase 1 nodes ────────────────────────────────────────────────────────
+    # ── Nodes (namespace applied by the GroupAction below, not per-node) ──────
     mock_encoder_node = Node(
         package="claude_visualizer",
         executable="mock_encoder.py",
@@ -117,42 +120,19 @@ def generate_launch_description():
         parameters=[params_file],
     )
 
-    # ── Phase 2 node ─────────────────────────────────────────────────────────
-    # web_visualizer bridges LSL ↔ ROS 2 and also serves the WebSocket endpoint
-    # consumed by the JS frontend. Safe to skip during Phase-1 debugging — see
-    # ROLLBACK note at top of file.
-    # web_visualizer_node = Node(
-    #     package="claude_visualizer",
-    #     executable="web_visualizer.py",
-    #     name="web_visualizer",
-    #     output="screen",
-    #     parameters=[
-    #         params_file,
-    #         {"rosbridge_port": LaunchConfiguration("rosbridge_port")},
-    #     ],
-    # )
-
-    # Built inside an OpaqueFunction so ws_port/http_port/session can be derived
-    # from the resolved pair_id at launch time (substitutions can't do arithmetic).
-    def _web_visualizer_setup(context, *_args, **_kwargs):
-        pair_id = int(LaunchConfiguration("pair_id").perform(context) or "0")
-        ws_port, http_port, session = _derive_pair(pair_id)
-        node = Node(
-            package="claude_visualizer",
-            executable="web_visualizer.py",
-            name="web_visualizer",
-            output="screen",
-            parameters=[
-                params_file,
-                {"ws_port": ws_port, "http_port": http_port, "session": session},
-            ],
-        )
-        return [
-            LogInfo(msg=f"[claude_visualizer] pair_id={pair_id} → "
-                        f"ws_port={ws_port} http_port={http_port} "
-                        f"lsl_suffix={'_' + session if session else '(none)'}"),
-            node,
-        ]
+    web_visualizer_node = Node(
+        package="claude_visualizer",
+        executable="web_visualizer.py",
+        name="web_visualizer",
+        output="screen",
+        parameters=[
+            params_file,
+            # ws_port/http_port fixed via params.yaml (9090/8000). group_number as
+            # a STRING (ParameterValue forces str so "5" is not type-inferred to
+            # int); web_visualizer treats "0"/"" as no LSL suffix.
+            {"group_number": ParameterValue(group_number, value_type=str)},
+        ],
+    )
 
     experiment_evaluator_node = Node(
         package="claude_visualizer",
@@ -161,24 +141,29 @@ def generate_launch_description():
         output="screen",
         parameters=[
             {
-                # "robot_id":         LaunchConfiguration("robot_id"),
-                # Pass-through string param (no arithmetic) → plain Node, no OpaqueFunction.
-                "pair_id":            LaunchConfiguration("pair_id"),
+                # group_number selects the criteria row (param is dynamic_typing,
+                # so the int that launch infers from "5" is accepted).
+                "group_number":       group_number,
                 "criteria_file_path": criteria_file,
             }
         ],
     )
 
-    return LaunchDescription([
-        waveform_arg,
-        # rosbridge_port_arg,
-        pair_id_arg,
-        # robot_id_arg,                 # ← removed: pair_id selects criteria now
-        use_mock_encoder_arg,
-        LogInfo(msg="[claude_visualizer] Full pipeline bringup (Phase 1 + Phase 2)"),
+    # PushRosNamespace applies /G<N> to EVERY node in this group — see the
+    # "WHY GroupAction" note at the top of the file.
+    namespaced_group = GroupAction([
+        PushRosNamespace(namespace),
         mock_encoder_node,
         encoder_reader_node,
-        # web_visualizer_node,          # ← comment to disable Phase 2
-        OpaqueFunction(function=_web_visualizer_setup),   # ← Phase 2 (derives ports/session)
+        web_visualizer_node,          # ← comment to disable Phase 2
         experiment_evaluator_node,    # ← comment to disable evaluation subsystem
+    ])
+
+    return LaunchDescription([
+        waveform_arg,
+        group_number_arg,
+        use_mock_encoder_arg,
+        LogInfo(msg=["[claude_visualizer] group_number=", group_number,
+                     " → namespace /G", group_number, ", ports 9090/8000 (fixed)"]),
+        namespaced_group,
     ])

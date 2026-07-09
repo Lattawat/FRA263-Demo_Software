@@ -49,7 +49,7 @@ class KalmanFilterNode(Node):
         r_pos  = self.get_parameter("kf_r_position").value
         p0     = self.get_parameter("kf_p0").value
 
-        # ── Filter state ─────────────────────────────────────────────────────
+        # ── Kalman Filter state ─────────────────────────────────────────────────────
         self._x = np.zeros(4)               # [pos, vel, acc, jerk]
         self._P = np.eye(4) * p0            # state covariance
         self._Q = np.diag([q_pos, q_vel, q_acc, q_jerk])
@@ -71,9 +71,13 @@ class KalmanFilterNode(Node):
             history=HistoryPolicy.KEEP_LAST,
             depth=10,
         )
-        self._pub = self.create_publisher(EncoderState, "/estimated_states", qos)
-        self.create_subscription(EncoderRaw, "/encoder_raw", self._cb, qos)
-        self.create_subscription(Empty, "/zero_estimated_states", self._zero_cb, qos)
+        # Relative topic names so the node's namespace (/G<N>) is prepended.
+        # self._pub = self.create_publisher(EncoderState, "/estimated_states", qos)
+        # self.create_subscription(EncoderRaw, "/encoder_raw", self._cb, qos)
+        # self.create_subscription(Empty, "/zero_estimated_states", self._zero_cb, qos)
+        self._pub = self.create_publisher(EncoderState, "estimated_states", qos)
+        self.create_subscription(EncoderRaw, "encoder_raw", self._cb, qos)
+        self.create_subscription(Empty, "zero_estimated_states", self._zero_cb, qos)
 
         self.get_logger().info(
             f"encoder_reader started — ticks_per_rev={ticks_per_rev}, "

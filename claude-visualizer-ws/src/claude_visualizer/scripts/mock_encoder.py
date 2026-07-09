@@ -126,9 +126,12 @@ class MockEncoderNode(Node):
             history=HistoryPolicy.KEEP_LAST,
             depth=10,
         )
-        self._pub = self.create_publisher(EncoderRaw, "/encoder_raw", qos)
+        # Relative topic names so the node's namespace (/G<N>) is prepended.
+        # self._pub = self.create_publisher(EncoderRaw, "/encoder_raw", qos)
+        self._pub = self.create_publisher(EncoderRaw, "encoder_raw", qos)
 
-        self._debug_pub = self.create_publisher(EncoderRaw, "/euler_velocity", qos)
+        # self._debug_pub = self.create_publisher(EncoderRaw, "/euler_velocity", qos)
+        self._debug_pub = self.create_publisher(EncoderRaw, "euler_velocity", qos)
 
         # ── Internal state ───────────────────────────────────────────────────
         # Waveform phase is derived from wall-clock time (time.time()), so that

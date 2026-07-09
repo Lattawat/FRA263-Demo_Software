@@ -51,19 +51,19 @@ HB_DEAD_TIMEOUT = 0.8
 
 modbus_lock = asyncio.Lock()
 
-# ── Pair identity → LSL stream-name suffix ───────────────────────────────────
-# Mirrors ROS web_visualizer.py: pair_id 0 = legacy (no suffix); N>=1 suffixes
+# ── Group identity → LSL stream-name suffix ──────────────────────────────────
+# Mirrors ROS web_visualizer.py: group 0 = legacy (no suffix); N>=1 suffixes
 # every LSL stream name with f"_{N}" so this back-end's ActualStates/EventTrigger
-# resolve as the pair's streams on the visualizer side. CLI arg only (no env).
+# resolve as the group's streams on the visualizer side. CLI arg only (no env).
 _parser = argparse.ArgumentParser(description="Base-System back-end (LSL + WebSocket)")
-_parser.add_argument("--pair_id", type=int, default=0,
-                     help="Integer pair id. 0 = legacy single-pair (no LSL suffix); "
+_parser.add_argument("--group_number", type=int, default=0,
+                     help="Integer group number. 0 = legacy single-group (no LSL suffix); "
                           "N>=1 suffixes LSL stream names with _N to match web_visualizer.")
 _args, _ = _parser.parse_known_args()          # parse_known_args: tolerate extra flags
-_session = str(_args.pair_id) if _args.pair_id else ""
-_suf = (lambda n: f"{n}_{_session}") if _session else (lambda n: n)
-print(f"[server_111] pair_id={_args.pair_id} "
-      f"lsl_suffix={'_' + _session if _session else '(none)'}")
+group_number = _args.group_number              # 0 = legacy (no suffix)
+_suf = (lambda n: f"{n}_{group_number}") if group_number else (lambda n: n)
+print(f"[server_111] group_number={group_number} "
+      f"lsl_suffix={'_' + str(group_number) if group_number else '(none)'}")
 
 # LSL StreamInfo for robot states (position, speed, accel)
 actual_state = pylsl.StreamInfo(

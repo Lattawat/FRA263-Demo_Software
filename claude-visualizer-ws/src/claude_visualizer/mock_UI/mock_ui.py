@@ -113,10 +113,21 @@ EVENT_TRIGGER_CFG = {
 }
 
 
-def _pair_suffix(pair_id=None) -> str:
-    """Per-pair LSL suffix: explicit arg wins, else CV_PAIR_ID env. 0/empty = none."""
-    pid = str(pair_id if pair_id is not None else os.environ.get("CV_PAIR_ID", "")).strip()
-    return f"_{pid}" if pid and pid != "0" else ""
+# def _pair_suffix(pair_id=None) -> str:
+#     """Per-pair LSL suffix: explicit arg wins, else CV_PAIR_ID env. 0/empty = none."""
+#     pid = str(pair_id if pair_id is not None else os.environ.get("CV_PAIR_ID", "")).strip()
+#     return f"_{pid}" if pid and pid != "0" else ""
+def _group_suffix(group_number=None) -> str:
+    """Per-group LSL suffix (UNCHANGED behaviour): explicit arg wins, else
+    CV_GROUP_NUMBER env. 0/empty = none, N → '_N'."""
+    n = str(group_number if group_number is not None else os.environ.get("CV_GROUP_NUMBER", "")).strip()
+    return f"_{n}" if n and n != "0" else ""
+
+
+def _group_namespace(group_number=None) -> str:
+    """Per-group ROS namespace token 'G<N>' — ALWAYS present (default N=0 → 'G0')."""
+    n = str(group_number if group_number is not None else os.environ.get("CV_GROUP_NUMBER", "")).strip() or "0"
+    return f"G{n}"
 
 # Dial geometry (all in pixels from canvas centre)
 _DIAL_R    = 95    # outer edge of tick ring / background circle
@@ -327,15 +338,19 @@ class KnobWidget(tk.Frame):
 class MockUINode(Node):
     """Minimal rclpy node — publishes /encoder_raw only."""
 
-    def __init__(self) -> None:
-        super().__init__("mock_ui")
+    def __init__(self, namespace: str = "G0") -> None:
+        # super().__init__("mock_ui")
+        super().__init__("mock_ui", namespace=namespace)   # /G<N>/… topics
         qos = QoSProfile(
             reliability=ReliabilityPolicy.RELIABLE,
             history=HistoryPolicy.KEEP_LAST,
             depth=10,
         )
-        self._pub = self.create_publisher(EncoderRaw, "/encoder_raw", qos)
-        self._event_pub = self.create_publisher(EventTrigger, "/event_trigger", qos)
+        # Relative topic names so the node's namespace (/G<N>) is prepended.
+        # self._pub = self.create_publisher(EncoderRaw, "/encoder_raw", qos)
+        # self._event_pub = self.create_publisher(EventTrigger, "/event_trigger", qos)
+        self._pub = self.create_publisher(EncoderRaw, "encoder_raw", qos)
+        self._event_pub = self.create_publisher(EventTrigger, "event_trigger", qos)
         # encoder resolution from the shared params.yaml (matches mock_encoder / KF)
         self._ticks_per_rev = _load_ticks_per_rev()
         self._ticks_per_rad = self._ticks_per_rev / (2.0 * math.pi)
@@ -381,13 +396,15 @@ class MockUINode(Node):
 class MockUI:
     """Top-level tkinter application."""
 
-    def __init__(self, pair_id=None) -> None:
+    def __init__(self, group_number=None) -> None:
         if not rclpy.ok():
             rclpy.init(args=None)
-        self._ros_node = MockUINode()
+        # self._ros_node = MockUINode()
+        self._ros_node = MockUINode(namespace=_group_namespace(group_number))
 
-        # Per-pair LSL isolation: suffix stream name + source_id (matches verifier + other mocks).
-        _suffix = _pair_suffix(pair_id)
+        # Per-group LSL isolation: suffix stream name + source_id (matches verifier + other mocks).
+        # _suffix = _pair_suffix(pair_id)
+        _suffix = _group_suffix(group_number)
         _act_cfg = {**ACTUAL_STATES_CFG,
                     "name":      ACTUAL_STATES_CFG["name"] + _suffix,
                     "source_id": ACTUAL_STATES_CFG["source_id"] + _suffix}
@@ -697,12 +714,15 @@ def main() -> None:
     # MockUI().run()
     parser = argparse.ArgumentParser(description="Mock UI Debugger")
     parser.add_argument(
-        "--pair-id",
+        # "--pair-id",
+        "--group-number",
         default=None,
-        help="Per-pair LSL suffix (overrides CV_PAIR_ID env). 0/empty = no suffix.",
+        help="Group number N: ROS namespace /G<N> + LSL suffix (_N, none for 0). "
+             "Overrides CV_GROUP_NUMBER env.",
     )
     args = parser.parse_args()
-    MockUI(pair_id=args.pair_id).run()
+    # MockUI(pair_id=args.pair_id).run()
+    MockUI(group_number=args.group_number).run()
 
 
 if __name__ == "__main__":

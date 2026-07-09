@@ -54,9 +54,9 @@ web_visualizer:
     ws_port: 9090
     http_port: 8000
     ws_host: "0.0.0.0"
-    # session: LSL stream suffix for multi-pair isolation. Normally set by the
-    # launch file from pair_id / CV_PAIR_ID; "" = legacy single-pair (no suffix).
-    session: ""
+    # group_number: LSL stream suffix for multi-group isolation. Normally set by
+    # the launch file; "0"/"" = group 0 (no suffix). (was "session".)
+    group_number: "0"
     lsl_params:
       resolve_timeout_s: 5.0
       actual_states_stream:
@@ -74,9 +74,13 @@ web_visualizer:
         sampling_rate_hz: 500.0
         source_id: "web_visualizer"
     topics:
-      actual_states: "/actual_states"
-      event_trigger: "/event_trigger"
-      encoder:       "/estimated_states"
+      # Relative names so the node's namespace (/G<N>) is prepended.
+      # actual_states: "/actual_states"
+      # event_trigger: "/event_trigger"
+      # encoder:       "/estimated_states"
+      actual_states: "actual_states"
+      event_trigger: "event_trigger"
+      encoder:       "estimated_states"
 
 # ---------------------------------------------------------------------------
 # mock_robot_controller (NOT a ROS node — reads this file directly via PyYAML)

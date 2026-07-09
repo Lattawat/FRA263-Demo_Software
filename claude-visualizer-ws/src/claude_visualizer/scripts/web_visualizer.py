@@ -159,14 +159,20 @@ class WebVisualizerNode(Node):
         self.declare_parameter("ws_port", 9090)
         self.declare_parameter("ws_host", "0.0.0.0")
         self.declare_parameter("http_port", 8000)
-        # LSL stream suffix for multi-pair LAN isolation ("" = legacy single-pair).
-        self.declare_parameter("session", "")
+        # Group number → LSL stream suffix for multi-group isolation ("0"/"" = no suffix).
+        # (was named "session" — renamed to match group_number used everywhere else.)
+        # self.declare_parameter("session", "")
+        self.declare_parameter("group_number", "0")
         self.declare_parameter("lsl_params.actual_states_stream.name",   "ActualStates")
         self.declare_parameter("lsl_params.event_trigger_stream.name",    "EventTrigger")
         self.declare_parameter("lsl_params.resolve_timeout_s",            5.0)
-        self.declare_parameter("topics.actual_states",                    "/actual_states")
-        self.declare_parameter("topics.event_trigger",                    "/event_trigger")
-        self.declare_parameter("topics.encoder",                          "/estimated_states")
+        # Relative topic names so the node's namespace (/G<N>) is prepended.
+        # self.declare_parameter("topics.actual_states",                  "/actual_states")
+        # self.declare_parameter("topics.event_trigger",                  "/event_trigger")
+        # self.declare_parameter("topics.encoder",                        "/estimated_states")
+        self.declare_parameter("topics.actual_states",                    "actual_states")
+        self.declare_parameter("topics.event_trigger",                    "event_trigger")
+        self.declare_parameter("topics.encoder",                          "estimated_states")
         self.declare_parameter("lsl_params.actual_states_stream.channel", [])
         self.declare_parameter("lsl_params.event_trigger_stream.channel", [])
 
@@ -182,9 +188,12 @@ class WebVisualizerNode(Node):
         self._http_port       = self.get_parameter("http_port").value
         # actual_states_stream  = self.get_parameter("lsl_params.actual_states_stream.name").value
         # event_trigger_stream  = self.get_parameter("lsl_params.event_trigger_stream.name").value
-        # Apply the per-pair LSL suffix so this verifier resolves only its own robot's streams.
-        session = self.get_parameter("session").value or ""
-        _suf = (lambda n: f"{n}_{session}") if session else (lambda n: n)
+        # Apply the per-group LSL suffix so this verifier resolves only its own robot's streams.
+        # group 0 (or "") → NO suffix (LSL behaviour unchanged).
+        # session = self.get_parameter("session").value or ""
+        # _suf = (lambda n: f"{n}_{session}") if session else (lambda n: n)
+        group_number = str(self.get_parameter("group_number").value or "").strip()
+        _suf = (lambda n: f"{n}_{group_number}") if group_number and group_number != "0" else (lambda n: n)
         actual_states_stream  = _suf(self.get_parameter("lsl_params.actual_states_stream.name").value)
         event_trigger_stream  = _suf(self.get_parameter("lsl_params.event_trigger_stream.name").value)
         
@@ -255,7 +264,8 @@ class WebVisualizerNode(Node):
         self._event_trigger_pub = self.create_publisher(EventTrigger, event_trigger_topic,  qos)
         # Tells the encoder_reader (Kalman) node to re-zero /estimated_states at the
         # source, so the evaluator + LSL outlet + WS all share one zeroed frame.
-        self._zero_estimated_pub = self.create_publisher(Empty, "/zero_estimated_states", qos)
+        # self._zero_estimated_pub = self.create_publisher(Empty, "/zero_estimated_states", qos)
+        self._zero_estimated_pub = self.create_publisher(Empty, "zero_estimated_states", qos)
 
         # Also subscribe to these topics so that ANY publisher (our LSL worker
         # OR mock_encoder OR a future robot_controller ROS node) gets
@@ -263,10 +273,14 @@ class WebVisualizerNode(Node):
         # broadcast directly — the subscription callbacks do.
         self.create_subscription(ActualStates,    actual_states_topic,  self._actual_states_cb,  qos)
         self.create_subscription(EventTrigger,    event_trigger_topic,  self._event_trigger_cb,  qos)
-        self.create_subscription(ExperimentEval,  "/eval_live",         self._eval_live_cb,      qos)
-        self.create_subscription(ExperimentEval,  "/eval_summary",      self._eval_summary_cb,   qos)
+        # self.create_subscription(ExperimentEval,  "/eval_live",       self._eval_live_cb,      qos)
+        # self.create_subscription(ExperimentEval,  "/eval_summary",    self._eval_summary_cb,   qos)
+        self.create_subscription(ExperimentEval,  "eval_live",          self._eval_live_cb,      qos)
+        self.create_subscription(ExperimentEval,  "eval_summary",       self._eval_summary_cb,   qos)
 
-        self._criteria_client = self.create_client(UpdateCriteria, "/update_criteria")
+        # Relative service name → resolves to /G<N>/update_criteria, matching the evaluator's server.
+        # self._criteria_client = self.create_client(UpdateCriteria, "/update_criteria")
+        self._criteria_client = self.create_client(UpdateCriteria, "update_criteria")
         self._last_criteria_json = "{}"
 
         # Actual-side zero offset stays here because /actual_states is produced

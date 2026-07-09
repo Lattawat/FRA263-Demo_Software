@@ -15,12 +15,12 @@
 | 3 | Reference lines on uPlot charts (target_rad amber dashed lines) | ✅ Complete |
 | 4 | Interactive criteria tab — view and edit pass/fail thresholds live from browser | ✅ Complete |
 | 5 | UI polish: x-axis fix, plot zoom, Pos Sync/Zero server-side, unit toggle, scrollable panel | ✅ Complete |
-| 6 | Multi-pair LAN scaling: single `pair_id` → ROS domain, LSL suffix, web ports | ✅ Complete |
+| 6 | Multi-group isolation: single `group_number` → ROS **namespace** `/G<N>/` + LSL suffix (superseded the earlier `pair_id`/ROS_DOMAIN_ID/port scheme) | ✅ Complete |
 | 7 | Homing at source (Zero re-zeros `/estimated_states` in the Kalman node), Skip Iteration, two-group precision, CSV export | ✅ Complete |
 
 **Current hardware state:** Real Teensy 4.1 encoder connected; `mock_encoder` is launched only when `use_mock_encoder:=true` (default `false`, i.e. it waits for the Teensy). Use `mock_robot_controller.py` or `mock_ui.py` for sending experiment triggers.
 
-**⚠ Firmware/host mismatches (see §14):** the Teensy firmware still uses `EN_RES 4096.0` while the host expects `ticks_per_rev: 8192`, and the firmware hardcodes `ROS_DOMAIN_ID=156`, which does not match the `pair<N>.env` domain scheme (0–101). Reconcile before trusting real-hardware position/multi-pair.
+**⚠ Firmware/host requirements (see §13/§14):** the Teensy firmware still uses `EN_RES 4096.0` while the host expects `ticks_per_rev: 8192` — reconcile before trusting real-hardware position. For real hardware also: the firmware's `GROUP_NUMBER` must equal the launch `group_number:=N`, and the verifier must run on `ROS_DOMAIN_ID=156` to match the firmware's domain (§13).
 
 ---
 
@@ -67,12 +67,6 @@ claude_visualizer_ws/
 │   ├── src/main.cpp
 │   ├── platformio.ini                      # Board: teensy41, framework: arduino
 │   └── MICROROS_NOTES.md
-├── pairs/                                  # Per-pair env files (Phase 6)
-│   ├── pair<N>.env                         # source before running on any machine in the pair
-│   ├── pair11.env                          # example: pair 11
-│   └── pair12.env                          # example: pair 12
-├── scripts/
-│   └── make_pair_env.sh                    # Generator: ./scripts/make_pair_env.sh <N>
 ├── docs/
 │   ├── System Design.md                   # ← this file (Claude agent reference)
 │   └── System Overview.md                 # Human-readable narrative + reasoning
@@ -131,8 +125,8 @@ claude_visualizer_ws/
                │                             pub /actual_states               │
                │   lsl-event-trigger thread → pub /event_trigger              │
                │   pub /zero_estimated_states (Empty) on Zero press           │
-               │   ws-server (asyncio :9000+N) + http-server (:8000+N)        │
-               │   GET /config.json → {"ws_port": N}                          │
+               │   ws-server (asyncio :9090) + http-server (:8000)  [fixed]   │
+               │   GET /config.json → {"ws_port": 9090}                       │
                │   srv client /update_criteria → experiment_evaluator         │
                └─────────────────────────────┬────────────────────────────────┘
                                              │
@@ -144,7 +138,7 @@ claude_visualizer_ws/
                     │  pub /eval_summary (on experiment end)        │
                     │  srv server /update_criteria (Phase 4)        │
                     └────────────────────────────────────────────────┘
-                                             │ WebSocket :9000+N
+                                             │ WebSocket :9090
                              ┌───────────────▼───────────────┐
                              │       Browser (app.js)         │
                              │  fetches /config.json on load  │
@@ -161,7 +155,7 @@ claude_visualizer_ws/
 
 **Robot machine** (when separate) runs only the robot controller, which emits **LSL** `ActualStates` + `EventTrigger`. No ROS on the robot machine in real deployment.
 
-**Cross-machine transport = LSL only.** All ROS/DDS traffic is local to the verifier machine. `ROS_DOMAIN_ID` isolates each verifier's ROS graph from other verifiers on the LAN; it does NOT cross to the robot machine in a real deployment (harmless to source there if using a ROS-based mock).
+**Cross-machine transport = LSL only.** All ROS/DDS traffic is local to the verifier machine. Groups are isolated by ROS **namespace** (`/G<N>/`), so multiple verifiers can share one LAN/domain without cross-talk; the LSL suffix (`_N`) isolates the cross-machine robot→verifier streams.
 
 **Cross-thread sync:** ROS callbacks → `asyncio.run_coroutine_threadsafe()` → WS loop thread.  
 **Self-loop fanout:** `web_visualizer` publishes `/actual_states` + `/event_trigger` via LSL workers, then also subscribes to both — subscription callbacks do the WS broadcast.
@@ -278,10 +272,10 @@ QoS on all topics: `RELIABLE`, `KEEP_LAST`, depth=10.
 **Unit conventions for `ActualStates`:** position channel is in **degrees**; velocity in rad/s; acceleration in rad/s².  
 `web_visualizer._actual_states_worker` converts position with `* _DEG_TO_RAD` and subtracts `_actual_pos_offset_rad` before publishing to `/actual_states`.
 
-**Multi-pair suffix (Phase 6):** When `pair_id = N ≠ 0`, **stream name AND source_id** both get suffix `_N` (e.g. `ActualStates_11`, `EventTrigger_11`). This suffix must be consistent across ALL three producers for a given pair:
-- verifier: `web_visualizer` `session` launch param → `_suf()` applied in code
-- robot mock: `CV_PAIR_ID` env var / `--pair-id` CLI arg → suffix applied before `create_outlet()`
-- `_resolve_stream` grabs `streams[0]` — the unique name+source_id suffix ensures it finds the correct pair's stream
+**Multi-group suffix:** When `group_number = N ≠ 0`, **stream name AND source_id** both get suffix `_N` (e.g. `ActualStates_5`, `EventTrigger_5`). This suffix must be consistent across ALL producers for a group:
+- verifier: `web_visualizer` `group_number` param (string, from launch) → `_suf()` applied in code (`0`/`""` → no suffix)
+- robot mock: `CV_GROUP_NUMBER` env var / `--group-number` CLI arg → suffix applied before `create_outlet()`
+- `_resolve_stream` grabs `streams[0]` — the unique name+source_id suffix ensures it finds the correct group's stream
 
 `utils.py:create_outlet()` is the shared factory for all LSL outlets.
 
@@ -289,11 +283,13 @@ QoS on all topics: `RELIABLE`, `KEEP_LAST`, depth=10.
 
 ## 6. WebSocket Protocol
 
-**Port:** `9000 + pair_id` (default `9090` when `pair_id = 0`)  
-**HTTP port:** `8000 + pair_id` (default `8000` when `pair_id = 0`)  
+**Port:** fixed `9090` (WebSocket)  
+**HTTP port:** fixed `8000`  
 **Format:** newline-delimited JSON text frames
 
-**Port discovery (Phase 6):** Browser fetches `GET /config.json` from the HTTP server on page load. Response: `{"ws_port": N}`. `app.js` uses this port to open the WebSocket instead of a hardcoded value. This decouples the browser from knowing the port at build time.
+Ports are no longer group-derived (groups run on different machines / IPs). The removed per-group port scheme is archived in `docs/Per-Group Port Configuration (archived).md`.
+
+**Port discovery:** Browser fetches `GET /config.json` from the HTTP server on page load. Response: `{"ws_port": N}` (now always `9090`). `app.js` uses this port to open the WebSocket instead of a hardcoded value — retained as indirection even though the port is fixed.
 
 ### Server → Browser
 
@@ -349,15 +345,16 @@ There is **no `zero_ack`** anymore (Phase 7). Zeroing is done at the source in t
 - **Subscribes:** `/estimated_states`, `/actual_states`, `/event_trigger`, `/eval_live`, `/eval_summary`
 - **Publishes:** `/actual_states`, `/event_trigger`, `/zero_estimated_states` (`Empty`, on Zero press)
 - **Service client:** `/update_criteria` (async call inside WS handler)
-- **LSL outlet:** `EstimatedStates` (3 × float32) — name + source_id suffixed by `_suf()` when session set
+- **LSL outlet:** `EstimatedStates` (3 × float32) — name + source_id suffixed by `_suf()` when `group_number` ≥ 1
 - **LSL inlets:** `ActualStates` (float), `EventTrigger` (string/JSON) — resolved by suffixed name
 - **Serializers:** `estimated_states_to_json`, `actual_states_to_json`, `event_trigger_to_json`, `_eval_to_json`
 
-**Parameters (Phase 6 additions):**
-- `session` (string, default `""`) — suffix token; `_suf = (lambda n: f"{n}_{session}") if session else (lambda n: n)` — applied to all LSL stream names + source_ids
-- `ws_port` — set by launch to `9000+N` (or 9090)
-- `http_port` — set by launch to `8000+N` (or 8000)
+**Parameters:**
+- `group_number` (string, default `"0"`; was named `session`) — LSL suffix token, set by launch via `ParameterValue(…, value_type=str)`; `_suf = (lambda n: f"{n}_{group_number}") if group_number not in ("", "0") else (lambda n: n)` — applied to all LSL stream names + source_ids (`0`/`""` → no suffix)
+- `ws_port` — fixed `9090` (from params.yaml; no longer group-derived)
+- `http_port` — fixed `8000` (from params.yaml)
 - `ws_host` — default `"0.0.0.0"` (listens on all interfaces)
+- The node runs under the namespace `/G<N>/` (from `PushRosNamespace` in the launch), so its topics are `/G<N>/estimated_states`, etc.
 
 **`/config.json` wiring:**
 ```python
@@ -388,10 +385,10 @@ self._zero_estimated_pub            # publisher: Empty → /zero_estimated_state
 - `_broadcast` / `_broadcast_async`: thread-safe WS fanout; caches last message per topic
 
 ### `experiment_evaluator` (`scripts/experiment_evaluator.py`)
-- **Parameters:** `pair_id` (default: `"0"`, declared with `dynamic_typing=True` so launch may pass it as int or str), `criteria_file_path` — `pair_id` selects the criteria row (replaces the old `robot_id`)
-- **Subscribes:** `/event_trigger`, `/estimated_states`
-- **Publishes:** `/eval_live` (throttled every 0.1 s), `/eval_summary` (on finish)
-- **Service server:** `/update_criteria` — validates key names and non-negative values; updates `self._criteria` in-place; changes are in-memory only (lost on restart)
+- **Parameters:** `group_number` (default: `"0"`, declared with `dynamic_typing=True` so launch may pass it as int or str), `criteria_file_path` — `group_number` selects the criteria row (was `pair_id`)
+- **Subscribes:** `event_trigger`, `estimated_states` (relative → `/G<N>/…`)
+- **Publishes:** `eval_live` (throttled every 0.1 s), `eval_summary` (on finish) — relative → `/G<N>/…`
+- **Service server:** `update_criteria` (relative → `/G<N>/update_criteria`) — validates key names and non-negative values; updates `self._criteria` in-place; changes are in-memory only (lost on restart)
 - **Criteria:** loaded from `criteria.yaml` at startup into `self._criteria` dict (keys normalized to strings)
 - **Constants:** `SETTLING_THRESHOLD_rad = 0.01`, `SETTLING_WINDOW_s = 0.5`, `LIVE_PUB_INTERVAL_s = 0.1`
 - **Settling detection:** time-based — requires continuous 0.5 s inside band. `cont_band_entry_s` resets on any band exit; `first_band_entry_s` records first entry (never resets) for `settling_time_s` reporting.
@@ -415,13 +412,17 @@ self._zero_estimated_pub            # publisher: Empty → /zero_estimated_state
 - **Readout:** both knobs display rad and deg simultaneously
 - **Command entry:** same ptp/pp/perf/prec/stop command syntax as `mock_robot_controller` — publishes to both LSL EventTrigger and ROS2 `/event_trigger`. Its `prec` emits the **correct** `target_pos` key (unlike the CLI `mock_robot_controller`).
 - **`ticks_per_rev`:** read from `params.yaml` (`mock_encoder.ticks_per_rev`, default `8192` via `_load_ticks_per_rev()`) so it always matches the KF/hardware
-- **Phase 6:** reads `CV_PAIR_ID` env / `--pair-id` CLI; `_pair_suffix()` helper appends `_N` to LSL name + source_id before `create_outlet()`
+- **Multi-group:** reads `CV_GROUP_NUMBER` env / `--group-number` CLI; `_group_suffix()` appends `_N` to LSL name + source_id, and `_group_namespace()` sets the ROS node namespace `G<N>` (default `G0` — mock_ui always namespaces its `/G<N>/encoder_raw` + `/G<N>/event_trigger`)
 
-**`_pair_suffix()` pattern (shared by mock_ui and mock_robot_controller):**
+**suffix + namespace helpers (mock_ui):**
 ```python
-def _pair_suffix(pair_id=None) -> str:
-    pid = str(pair_id if pair_id is not None else os.environ.get("CV_PAIR_ID", "")).strip()
-    return f"_{pid}" if pid and pid != "0" else ""
+def _group_suffix(group_number=None) -> str:      # LSL: 0/empty → "", N → "_N"
+    n = str(group_number if group_number is not None else os.environ.get("CV_GROUP_NUMBER", "")).strip()
+    return f"_{n}" if n and n != "0" else ""
+
+def _group_namespace(group_number=None) -> str:   # ROS ns: ALWAYS present, default "G0"
+    n = str(group_number if group_number is not None else os.environ.get("CV_GROUP_NUMBER", "")).strip() or "0"
+    return f"G{n}"
 ```
 
 ### `mock_robot_controller` (`scripts/mock_robot_controller.py`)
@@ -429,7 +430,7 @@ def _pair_suffix(pair_id=None) -> str:
 - **LSL outlets:** `ActualStates` (3 × float32, REGULAR), `EventTrigger` (1 × string, IRREGULAR)
 - **Telemetry:** continuous waveform (trapezoid/sine/step) in background thread
 - **Unit output:** position sent in **degrees** (`math.degrees(p)`); velocity and acceleration in rad/s and rad/s² (numerical derivatives of raw radian waveform — not converted)
-- **Phase 6:** reads `CV_PAIR_ID` env / `--pair-id` CLI; appends suffix to YAML-loaded `name` and `source_id` before `create_outlet()`
+- **Multi-group:** reads `CV_GROUP_NUMBER` env / `--group-number` CLI; appends `_N` suffix to YAML-loaded `name` and `source_id` before `create_outlet()`. **No ROS namespace** (pure LSL). Suffix behaviour unchanged from the pair_id era.
 - **CLI commands:**
 
 | Command | Parameters | Example | JSON sent |
@@ -510,7 +511,7 @@ band = max(SETTLING_THRESHOLD, criteria["settling_band_pct"] / 100.0 × |travel|
 - **Auto (precision only):** the two timeouts in `_update_prec` also call `_skip_trial()`. `_skip_trial()` is the single owner of skip-counter selection (chosen from `_prec_at_target` **before** flipping) and the phase flip — callers must never pre-flip.
 
 ### Criteria (`config/criteria.yaml`)
-Keyed by `pair_id` (the launch arg / `CV_PAIR_ID`). Rows are pair numbers (e.g. `11`, `12`) plus a `default` fallback used for `pair_id` 0 or any unlisted pair. The loader normalizes keys to strings, so `11:` (int) and `"11":` (str) both match.
+Keyed by `group_number` (the launch arg). Rows are group numbers (e.g. `11`, `12`) plus a `default` fallback used for group 0 or any unlisted group. The loader normalizes keys to strings, so `11:` (int) and `"11":` (str) both match.
 
 | Key | Used by | Meaning |
 |---|---|---|
@@ -540,10 +541,10 @@ Single source for all ROS node params. Key entries:
 | `encoder_reader` | `kf_r_position` | 4.65e-6 | Measurement noise — larger = smoother, trusts encoder less |
 | `encoder_reader` | `kf_p0` | 1.0 | Initial state uncertainty |
 | `mock_encoder` | `ticks_per_rev` | 8192 | must match `encoder_reader`; also read by `mock_ui` |
-| `web_visualizer` | `ws_port` | 9090 | WebSocket port; launch overrides to `9000+N` |
-| `web_visualizer` | `http_port` | 8000 | HTTP file server port; launch overrides to `8000+N` |
+| `web_visualizer` | `ws_port` | 9090 | WebSocket port (fixed — no longer group-derived) |
+| `web_visualizer` | `http_port` | 8000 | HTTP file server port (fixed) |
 | `web_visualizer` | `ws_host` | `"0.0.0.0"` | WS listen address |
-| `web_visualizer` | `session` | `""` | LSL stream name suffix token; launch sets to `str(N)` |
+| `web_visualizer` | `group_number` | `"0"` | LSL stream name suffix token (was `session`); launch passes it as a string; `"0"`/`""` → no suffix |
 | `web_visualizer` | `lsl_params.resolve_timeout_s` | 5.0 | LSL stream lookup timeout |
 | `web_visualizer` | `lsl_params.estimated_states_stream.sampling_rate_hz` | 500.0 | EstimatedStates outlet rate (code default is 100.0; params.yaml/launch wins → 500 Hz) |
 | `mock_robot_controller` | `lsl_params.actual_states_stream.sampling_rate_hz` | 500.0 | |
@@ -552,8 +553,8 @@ Single source for all ROS node params. Key entries:
 | `mock_robot_controller` | `waveform_config.trap_acceleration` | π/2 (1.5708) | [rad/s²] |
 
 ### `config/criteria.yaml`
-Per-pair evaluation criteria. Edit directly to change pass/fail thresholds.
-Launch with `pair_id:=11` (or any pair number / key in the file) to select a row; `pair_id` 0 or an unlisted pair uses `default`.
+Per-group evaluation criteria. Edit directly to change pass/fail thresholds.
+Launch with `group_number:=11` (or any group number / key in the file) to select a row; group 0 or an unlisted group uses `default`.
 
 ---
 
@@ -578,8 +579,8 @@ Launch with `pair_id:=11` (or any pair number / key in the file) to select a row
 ### Redraw loop
 `setInterval(redraw, 1000/30)` — 30 Hz, decoupled from WS rate. Updates live plots, profile plots, and zoom plots every tick using current `pScale` (rad or deg). This ensures unit-toggle changes are reflected in all panels without re-cropping.
 
-### Phase 6: WS port discovery
-`app.js` calls `resolveWsUrl()` on page load before `connect()`:
+### WS port discovery
+`app.js` calls `resolveWsUrl()` on page load before `connect()` (retained even though the port is now fixed at 9090):
 ```js
 async function resolveWsUrl() {
     try {
@@ -701,8 +702,9 @@ source install/setup.bash
 ros2 launch claude_visualizer bringup.launch.py
 # Hardware-free mode (start the synthetic mock_encoder instead of the Teensy):
 ros2 launch claude_visualizer bringup.launch.py use_mock_encoder:=true
-# With a specific pair's criteria (also sets ports/LSL suffix):
-ros2 launch claude_visualizer bringup.launch.py pair_id:=11
+# With a specific group (namespaces the whole ROS graph under /G<N>/, sets the
+# LSL suffix _N, and selects the criteria row):
+ros2 launch claude_visualizer bringup.launch.py group_number:=5
 
 # Mock controller (separate terminal — not a ROS node, no sourcing needed)
 ros2 run claude_visualizer mock_robot_controller
@@ -712,54 +714,42 @@ ros2 run claude_visualizer mock_robot_controller
 # http://localhost:8000
 ```
 
-### Multi-pair (Phase 6)
+### Multi-group (namespace isolation)
 
 ```bash
-# Generate env file for pair N (run once per pair number)
-./scripts/make_pair_env.sh 11    # creates pairs/pair11.env
-
-# --- On VERIFIER machine (runs full ROS graph + web server) ---
+# --- Group 5 verifier (runs full ROS graph + web server) ---
 source /opt/ros/jazzy/setup.bash
 source .venv/bin/activate
-source pairs/pair11.env          # sets ROS_DOMAIN_ID=11, CV_PAIR_ID=11
 source install/setup.bash
-ros2 launch claude_visualizer bringup.launch.py
-# WS on :9011, HTTP on :8011, LSL stream names suffixed _11
+ros2 launch claude_visualizer bringup.launch.py group_number:=5
+# ROS graph under /G5/…, LSL streams suffixed _5, web on fixed :9090/:8000
 
-# --- On ROBOT machine (LSL source only) ---
-source pairs/pair11.env          # sets CV_PAIR_ID=11 (ROS_DOMAIN_ID harmless if no ROS)
-python3 src/claude_visualizer/scripts/mock_robot_controller.py
-# OR if the mock_ui is on a ROS-enabled machine:
-# source /opt/ros/jazzy/setup.bash && source install/setup.bash
-# python3 src/claude_visualizer/mock_UI/mock_ui.py
+# --- Group 5 robot / mock (LSL source; namespaced if it publishes ROS) ---
+python3 src/claude_visualizer/scripts/mock_robot_controller.py --group-number 5   # pure LSL → ActualStates_5
+# OR the GUI mock (also namespaces its ROS topics under /G5/):
+# python3 src/claude_visualizer/mock_UI/mock_ui.py --group-number 5
 
-# Browser: http://<verifier-ip>:8011   (app.js fetches /config.json to get ws_port=9011)
+# Browser: http://<verifier-ip>:8000   (each group's verifier is a different machine/IP)
 
-# --- Pair stream name verification ---
-python3 -c "
-pair=11
-print('ws_port:', 9000+pair, 'http_port:', 8000+pair)
-print('LSL names: ActualStates_11, EventTrigger_11, EstimatedStates_11')
-"
+# --- Verify the group's ROS graph is namespaced ---
+ros2 topic list        # → /G5/encoder_raw, /G5/estimated_states, /G5/eval_live, …
 ```
 
-### Port derivation table
+### Group → isolation table
 
-| pair_id | ROS_DOMAIN_ID | ws_port | http_port | LSL suffix |
-|---------|--------------|---------|-----------|------------|
-| 0 (unset) | 0 | 9090 | 8000 | (none) |
-| 1 | 1 | 9001 | 8001 | `_1` |
-| 11 | 11 | 9011 | 8011 | `_11` |
-| 12 | 12 | 9012 | 8012 | `_12` |
-| 101 | 101 | 9101 | 8101 | `_101` |
+| group_number | ROS namespace | LSL suffix | ws_port | http_port |
+|---|---|---|---|---|
+| 0 (default) | `/G0/` | (none) | 9090 | 8000 |
+| 5 | `/G5/` | `_5` | 9090 | 8000 |
+| 11 | `/G11/` | `_11` | 9090 | 8000 |
 
-`ROS_DOMAIN_ID` safe range: **0–101** (ports 7400–7680; outside this range DDS has port collisions).
+**There is always a namespace** (default group 0 → `/G0/`). Ports are **fixed** — different groups run on different machines (distinct IPs), so per-group ports are unnecessary. The removed per-group port scheme is archived in `docs/Per-Group Port Configuration (archived).md`.
 
 **Launch args:**
-- `pair_id` (default: from `CV_PAIR_ID` env, else `"0"`) — single setup identifier: derives ports + LSL suffix (Phase 6) **and** selects the criteria row in `criteria.yaml` (replaces the old `robot_id`)
-- `use_mock_encoder` (default: `"false"`) — when `true`, launches `mock_encoder` under an `IfCondition`; when `false`, the graph waits for the real Teensy on `/encoder_raw`
+- `group_number` (default: `"0"`) — CLI-only. Puts the whole ROS graph under `/G<N>/`, sets the LSL suffix `_N` (none for 0), and selects the criteria row in `criteria.yaml`. Replaces `pair_id` (and the old `ROS_DOMAIN_ID` / per-group port scheme).
+- `use_mock_encoder` (default: `"false"`) — when `true`, launches `mock_encoder` under an `IfCondition`; when `false`, the graph waits for the real Teensy on `/G<N>/encoder_raw`
 - `waveform` (default: `"trapezoid"`) — mock_encoder waveform (`sine`|`trapezoid`|`step`)
-- (`robot_id` removed — `pair_id` selects criteria; `web_visualizer` is built in an `OpaqueFunction` that derives `ws_port`/`http_port`/`session` from `pair_id`)
+- All nodes are wrapped in `GroupAction([PushRosNamespace(["G", group_number]), …])` (no OpaqueFunction — the namespace is a substitution and `group_number` is passed as a `ParameterValue(str)`); `web_visualizer` gets `group_number` (LSL suffix); `experiment_evaluator` gets `group_number` for criteria. The GroupAction is preferred over per-node `namespace=` so a newly added node can't silently miss the namespace.
 
 **Build notes:**
 - `colcon build` is required for any `.py` script change (scripts are copied to install, not symlinked — `--symlink-install` conflicts with micro_ros_package)
@@ -768,66 +758,74 @@ print('LSL names: ActualStates_11, EventTrigger_11, EstimatedStates_11')
 
 ---
 
-## 13. Multi-Pair LAN Scaling (Phase 6)
+## 13. Multi-Group Isolation (ROS namespaces)
+
+Isolation is by **ROS namespace**, keyed on a single `group_number = N`. (This replaces the earlier `pair_id` model that used `ROS_DOMAIN_ID` + per-group ports; that port scheme is archived in `docs/Per-Group Port Configuration (archived).md`.)
 
 ### Problem
-Running N robot+verifier pairs on one LAN causes three independent collision risks:
-1. **ROS 2 / DDS:** All pairs on domain 0 receive each other's `/estimated_states`, `/event_trigger`, etc. — evaluator gets wrong data.
+Running multiple robot+verifier groups on one LAN causes collision risks:
+1. **ROS 2 topics:** groups on the same graph receive each other's `/estimated_states`, `/event_trigger`, etc. — evaluator gets the wrong data.
 2. **LSL:** `_resolve_stream(name)` grabs `streams[0]` from any stream with that name on the LAN — verifier latches onto the wrong robot's telemetry.
-3. **Web ports:** Two `web_visualizer` nodes on the same host cannot both bind to `:9090` / `:8000` — second launch fails.
 
-### Solution: single `pair_id = N` → three-layer derivation
+### Solution: `group_number = N` → namespace + LSL suffix
 
+Fully declarative in the launch (no OpaqueFunction) — the namespace is a substitution and the group number is forced to a string param:
 ```python
-# bringup.launch.py — _derive_pair()
-def _derive_pair(pair_id: int):
-    if pair_id:
-        return 9000 + pair_id, 8000 + pair_id, str(pair_id)
-    return 9090, 8000, ""
+# bringup.launch.py
+group_number = LaunchConfiguration("group_number")
+namespace    = ["G", group_number]                 # "G0", "G5", …  (always present)
+
+# web_visualizer param (string; ParameterValue avoids "5" → int inference):
+{"group_number": ParameterValue(group_number, value_type=str)}
+
+# all nodes namespaced by the group boundary:
+GroupAction([PushRosNamespace(namespace), *nodes])
 ```
+The "group 0 → no LSL suffix" rule lives in `web_visualizer._suf` (`"0"`/`""` → no suffix), not the launch.
 
-| Layer | Derivation | Scope |
+| Layer | Mechanism | Notes |
 |---|---|---|
-| ROS 2 | `ROS_DOMAIN_ID = N` (exported before launch) | verifier machine only |
-| LSL | stream name + source_id get suffix `_N` | both machines |
-| Web | `ws_port = 9000+N`, `http_port = 8000+N` | verifier machine |
+| ROS 2 | node **namespace** `/G<N>/` | All nodes wrapped in `GroupAction([PushRosNamespace("G<N>"), …])`. Requires **relative** topic names (no leading `/`) so the namespace attaches. Always present (default `/G0/`). |
+| LSL | stream name + source_id suffix `_N` | Cross-machine isolator; `0 → none`, `N → _N` (behaviour unchanged from the pair_id era). |
+| Web | fixed `9090 / 8000` | Not derived — groups live on different machines (distinct IPs). |
 
-### Env file (`pairs/pair<N>.env`)
-```bash
-export ROS_DOMAIN_ID=11   # verifier: isolates local ROS graph; harmless on pure-LSL robot box
-export CV_PAIR_ID=11      # both machines: LSL suffix _11 — the cross-machine isolator
+### How it reaches each component
+| Component | Reads group | Applies |
+|---|---|---|
+| `bringup.launch.py` | `group_number:=N` (CLI) | `PushRosNamespace(["G", group_number])` on all nodes (via GroupAction); `group_number` → web_visualizer + experiment_evaluator |
+| `web_visualizer.py` | `group_number` ROS param | `_suf()` appends `_N` to LSL names + source_ids (`0`/`""` → none) |
+| `mock_ui.py` | `--group-number` / `CV_GROUP_NUMBER` | ROS node `namespace="G<N>"` **and** LSL suffix `_N` |
+| `mock_robot_controller.py` | `--group-number` / `CV_GROUP_NUMBER` | LSL suffix `_N` only (pure LSL, no namespace) |
+
+### Why namespaces instead of `ROS_DOMAIN_ID`
+`ROS_DOMAIN_ID` must be exported **before** the ROS daemon/DDS starts (it can't be set by a launch arg), which forced the old env-file workflow. A **namespace is a plain launch argument** (`group_number:=N`) — no pre-sourcing, no daemon-timing constraint, and it shows up cleanly in `ros2 topic list` as a `/G<N>/` tree. The env file + `make_pair_env.sh` are removed; group is passed on the CLI (`group_number:=N` for the launch, `--group-number N` for the mocks; `CV_GROUP_NUMBER` env still works as a fallback for the mocks).
+
+### Real Teensy + namespaces (implemented in firmware)
+`encoder_data_publisher/src/main.cpp` now namespaces the node from a compile-time define, so the real Teensy publishes `/G<N>/encoder_raw`:
+```c
+#define GROUP_NUMBER 0
+#define STR2(x) #x
+#define STR(x)  STR2(x)
+#define ROS_NAMESPACE "G" STR(GROUP_NUMBER)     // → "G0"
+// node init: rclc_node_init_default(&node, "encoder_data_publisher", ROS_NAMESPACE, &support);
+// publisher: rclc_publisher_init_default(..., "encoder_raw");   // relative → /G<N>/encoder_raw
 ```
-Generated by `./scripts/make_pair_env.sh <N>` (N validated to **0–101**; writes exactly these two exports). Examples committed: `pairs/pair11.env`, `pairs/pair12.env`. **Source on EVERY terminal of EVERY machine the pair spans, before any `ros2` command or mock script.** Verifier machine uses both vars; the robot machine needs only `CV_PAIR_ID`.
+Two hard requirements for real hardware:
+1. **`GROUP_NUMBER` (firmware) must equal `group_number:=N` (launch)** — the Teensy's `/G<N>/encoder_raw` must match what `encoder_reader` subscribes to. Each group flashes its own number.
+2. **Domain must match.** The firmware stays on `ROS_DOMAIN_ID = 156` (`rcl_init_options_set_domain_id(&init_options, 156)`), so the verifier must run on domain 156 too: `export ROS_DOMAIN_ID=156` before `ros2 launch`. Groups are still isolated by **namespace** even though they share domain 156. The mock path (mock_ui/mock_encoder) is unaffected — it namespaces itself and runs on whatever domain the host uses.
 
-### Why an env file and not `--pair-id` argparse everywhere?
-`argparse` **is** supported as an override on the non-ROS mock tools, but the env file is the primary mechanism for four reasons:
-1. **`ROS_DOMAIN_ID` must be in the environment *before* any ROS process / DDS starts** — DDS reads it at init. It cannot be injected by a launch argument or a Python flag after the fact; only a pre-sourced shell variable guarantees the ordering.
-2. **Source once vs. repeat a flag on every command.** A pair spans several independently launched programs (`ros2 launch`, `mock_robot_controller`, maybe `mock_ui`, across 1–2 machines). With argparse you would have to pass `--pair-id N` correctly on each — a single omission silently mis-pairs LSL/ROS. Sourcing one file sets it consistently for the whole shell.
-3. **The launch file reads the env var as its default** (`pair_id` defaults to `os.environ.get("CV_PAIR_ID","0")`), so `ros2 launch …` needs no extra flag once sourced; `pair_id:=N` on the CLI still overrides.
-4. **argparse is kept purely as the override path** on the non-ROS mocks (they can't receive a ROS launch arg): `--pair-id` wins over `CV_PAIR_ID`. So it's env-primary / argparse-override — not two competing schemes.
-
-### ⚠ Firmware domain vs. pair domain
-The Teensy firmware hardcodes `ROS_DOMAIN_ID=156` (`rcl_init_options_set_domain_id(..., 156)`). So a **real encoder only appears on domain 156**, while `pair<N>.env` sets `ROS_DOMAIN_ID=N` (0–101). With real hardware the verifier will not receive `/encoder_raw` unless the domains are reconciled (e.g. re-flash the firmware to domain N, or run that pair on domain 156). The mock encoder / mock_ui are unaffected because they publish on whatever domain the host env sets.
-
-### Component wiring
-
-| Component | How it reads pair_id | What it does with it |
-|---|---|---|
-| `bringup.launch.py` | `CV_PAIR_ID` env → `pair_id` launch arg | Computes ws/http ports + session; passes as param overrides to `web_visualizer` |
-| `web_visualizer.py` | `session` ROS param (set by launch) | `_suf()` appends `_{session}` to all LSL names + source_ids |
-| `mock_robot_controller.py` | `CV_PAIR_ID` env / `--pair-id` CLI | Mutates YAML-loaded stream cfg before `create_outlet()` |
-| `mock_ui.py` | `CV_PAIR_ID` env / `--pair-id` CLI | `_pair_suffix()` → mutates ACTUAL_STATES_CFG / EVENT_TRIGGER_CFG |
-| `app.js` | fetches `/config.json` → `ws_port` | Opens WS to `ws://${location.hostname}:${ws_port}` |
+(If a particular micro-ROS build doesn't expand the relative topic under the node namespace, switch to an absolute `#define ENCODER_TOPIC "/G" STR(GROUP_NUMBER) "/encoder_raw"` in the publisher init — a fallback noted in `main.cpp`.)
 
 ### Backward compatibility
-`pair_id = 0` or unset → no suffix, ports `9090`/`8000`, `ROS_DOMAIN_ID=0`. All existing single-pair workflows unchanged.
+`group_number = 0` (default) → namespace `/G0/`, **no** LSL suffix, criteria `default`, ports `9090`/`8000`. There is always a namespace, but group 0 keeps unsuffixed LSL streams.
 
-### Verification (expected stream names)
+### Verification (expected topics + stream names)
 ```
-pair=0   ws=9090 http=8000 | ActualStates / EventTrigger / EstimatedStates
-pair=11  ws=9011 http=8011 | ActualStates_11 / EventTrigger_11 / EstimatedStates_11
-pair=101 ws=9101 http=8101 | ActualStates_101 / EventTrigger_101 / EstimatedStates_101
+group=0  → /G0/…   | ActualStates / EventTrigger / EstimatedStates          (no suffix)
+group=5  → /G5/…   | ActualStates_5 / EventTrigger_5 / EstimatedStates_5
+group=11 → /G11/…  | ActualStates_11 / EventTrigger_11 / EstimatedStates_11
 ```
+`ros2 topic list` shows the `/G<N>/` tree; `ros2 topic echo /G5/estimated_states` vs `/G6/…` confirm no cross-talk.
 
 ---
 
@@ -837,7 +835,7 @@ pair=101 ws=9101 http=8101 | ActualStates_101 / EventTrigger_101 / EstimatedStat
 |---|---|---|
 | `encoder_data_publisher/src/main.cpp` | `dt_us` hardcoded to 10000 — not measured from actual timer elapsed | Known |
 | `encoder_data_publisher/src/main.cpp` | `EN_RES 4096.0` vs host `ticks_per_rev: 8192` — host computes half the true angle with real hardware unless reconciled | **Bug** |
-| `encoder_data_publisher/src/main.cpp` | `ROS_DOMAIN_ID` hardcoded to `156` — conflicts with the `pair<N>.env` scheme (`ROS_DOMAIN_ID=N`, 0–101); verifier won't see a real Teensy unless domains match | **Bug** |
+| `encoder_data_publisher/src/main.cpp` | node now namespaced via `GROUP_NUMBER` → publishes `/G<N>/encoder_raw` (§13). Requirement: firmware `GROUP_NUMBER` must equal launch `group_number:=N`, and host must run `ROS_DOMAIN_ID=156` | Resolved / note |
 | `mock_robot_controller.py` `prec` | Emits `tar_pos`, but `experiment_evaluator` reads `target_pos` → precision via the CLI mock raises `KeyError`. Use `mock_ui` (sends `target_pos`) | **Bug** |
 | `web_visualizer.py` `_actual_pos_offset_rad` | Cumulative offset; not reset on WS reconnect or node restart — operator must press Pos Sync again after restart | Known |
 | `criteria_update` (Phase 4) | Changes are in-memory only — lost on `experiment_evaluator` restart | By design |
