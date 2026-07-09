@@ -110,7 +110,7 @@ Data Flow & Protocols
 
 .. list-table::
    :header-rows: 1
-   :widths: 26 22 20 26
+   :widths: 18 18 22 20 26 
 
    * - Sender
      - Receiver
