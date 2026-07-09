@@ -99,7 +99,7 @@ the robot's performance and report it back to the user through the web UI also.
 
 ..  old version
     In words: the **robot** talks to the **Base System back-end** over a USB cable using
-    Modbus RTU. The back-end shows the robot's state in the **web UI** over a WebSocket, and
+    Modbus RTU. The back-end shows the roendbot's state in the **web UI** over a WebSocket, and
     at the same time streams the same data to the **Verification System** over the network
     using LSL. Inside the Verification System, an **encoder** measures the real motion; a
     **Kalman filter** cleans it up; the **web visualizer** shows it in a browser; and the
@@ -112,25 +112,29 @@ Data Flow & Protocols
    :header-rows: 1
    :widths: 26 22 20 26
 
-   * - Link (from ↔ to)
+   * - Sender
+     - Receiver
      - Protocol
      - Address / Port
      - Payload
-   * - Robot ↔ Base System back-end
-     - Modbus RTU (USB serial)
+   * - Robot
+     - Base System Back-end
+     - Modbus RTU (USB serial) (Bidirectional)
      - 
        * ``/dev/ttyACM*``
        * baudrate 230400
        * 8-E-1
        * slave address 21
      - 16-bit registers ``0x00``–``0x31``
-   * - Base System Front-end ↔ back-end
-     - WebSocket (JSON)
+   * - Base System webUI
+     - Base System Back-end
+     - WebSocket (JSON) (Bidirectional)
      - ``ws://localhost:8765``
      - 
         * ``STATS`` messages to UI
         * ``{mode, action}`` commands from user to Back-end
-   * - Base System back-end → Verification System
+   * - Base System Back-end
+     - Verification System Back-end 
      - 
         * LSL stream ``ActualStates``
         * LSL stream ``EventTrigger``
@@ -139,21 +143,25 @@ Data Flow & Protocols
      - 
         * Robot's actual states: position, speed, accel
         * one JSON message per user action
-   * - Verification System → Base System back-end
+   * - Verification System Back-end
+     - Base System Back-end
      - LSL stream ``EstimatedStates``
      - LAN
      - Estimated states: position, velocity, accel
-   * - Inside Verification System
+   * - One node in the Verification System
+     - Another node in the Verification System
      - ROS 2 topics/services (DDS)
      - same network and ROS_DOMAIN_ID
      - ``EncoderRaw``, ``EncoderState``, ``EventTrigger``, ``ExperimentEval``
-   * - Teensy ↔ Verification System
+   * - Teensy
+     - Verification System Back-end 
      - micro-ROS (USB serial)
      - 
         * ``/dev/ttyACM*``
         * baudrate 115200
      - ``/encoder_raw`` messages
-   * - Verification System webUI ↔ Verification System Back-end (web_visualizer)
+   * - Verification System webUI
+     - Verification System Back-end (web_visualizer)
      - HTTP + WebSocket (JSON)
      - 
         * ``http://localhost:8000``
@@ -180,7 +188,8 @@ Data Flow & Protocols
     namespace ``/G0/``, no LSL suffix, and the ``default`` criteria row.
 
 **Methods to handle multiple machines in the same network** 
-* Each Back-end and Front-end is on the same local machine, so there is no problem
+
+* Each Back-end and front-end is on the same local machine, so there is no problem
 * ROS message of the Verification System will be published under the namespace ``/G<N>/``, 
 specified by a launch argument ``--group-number``. The default is 0.
 * LSL streams name is modified by adding a suffix ``_N``, where N is the same launch argument.
