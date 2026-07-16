@@ -23,7 +23,7 @@ evaluation algorithm (explained one by one in the Node Workflow section):
 
 .. code-block:: text
 
-   [ from web_visualizer ]          ┌──────────────────────────┐       [ to web_visualizer ]
+   [ from web_visualizer ]         ┌──────────────────────────┐       [ to web_visualizer ]
    /event_trigger  ──────────────▶ │                          │ ────▶ /eval_live      (pub, 10 Hz)
    (start / stop / skip events)    │   experiment_evaluator   │       live metrics during a run
                                    │                          │
