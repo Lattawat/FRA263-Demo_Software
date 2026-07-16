@@ -3,22 +3,25 @@ State Estimator Node (Kalman Filter)
 
 .. Node description (the design idea, detail, and other crucial info)
 
-**Role.** The node ``encoder_reader`` turns the noisy raw encoder ticks into smooth
-velocity and acceleration and a clean position. It uses a **constant-jerk Kalman filter**
-whose state is ``[position, velocity, acceleration, jerk]``. It reads one topic and writes
-one topic:
+This node estimates the velocity and acceleration of the position data from 
+``\encoder_raw `` ROS2 topic which is a tick information. So, we need to 
+convert the data to radian before using in the calculation process. 
+This project we use a **constant-jerk Kalman filter** whose state is 
+``[position, velocity, acceleration, jerk]``.
 
 .. code-block:: text
 
    /encoder_raw                 ┌───────────────────────────┐            /estimated_states
    (EncoderRaw)  ──────────────▶│       encoder_reader      │───────────▶ (EncoderState)
-   ticks, dt_us                 │   constant-jerk Kalman     │            position, velocity,
-                                │   filter                   │            acceleration, variances
+   ticks, dt_us                 │   constant-jerk Kalman    │             position, velocity,
+                                │   filter                  │             acceleration, variances
                                 └───────────────────────────┘
 
 **Tuning — process and measurement noise.** The filter is tuned with two covariances,
 both set in ``params.yaml``. The process-noise matrix ``Q`` is a diagonal, and each state
 gets a **different value because the states live at different orders of magnitude**:
+
+**Process Noise**
 
 .. list-table::
    :header-rows: 1
@@ -39,28 +42,26 @@ gets a **different value because the states live at different orders of magnitud
    * - ``kf_q_jerk``
      - ``5.0``
      - Process noise on jerk. Large — almost all of the model's slack lives here.
+
+
+**Measurement Noise**
+
+.. list-table::
+   :header-rows: 1
+   :widths: 24 14 62
+
    * - ``kf_r_position``
      - ``4.65e-6``
      - Measurement noise on the encoder position (in rad²). Larger = smoother, but trusts the encoder less.
-   * - ``kf_p0``
-     - ``1.0``
-     - Initial state uncertainty (the starting value of the covariance ``P``).
-
-The point of this ordering — tiny at the bottom of the list, large at the top — is that
-the model assumes **jerk is constant** between samples, which is never exactly true. By
-giving ``jerk`` a large ``Q`` and ``position`` / ``velocity`` a near-zero ``Q``, the
-filter is told: "trust that position and velocity follow the motion equations; let the
-surprise land on jerk." When the real motion changes, the filter adapts through the jerk
-term, which then feeds acceleration, then velocity, then position. That keeps the output
-smooth without making it slow to react.
 
 **Interfaces.** The node has three interfaces:
 
 - **Subscribes** ``/encoder_raw`` (``EncoderRaw``: ``ticks``, ``raw_position``, ``dt_us``)
-  — the raw encoder feed the filter runs on.
-- **Subscribes** ``/zero_estimated_states`` (``std_msgs/Empty``) — an empty "re-zero now"
-  signal. On any message the node captures the current raw position as the new zero, so
-  the published position is re-zeroed at the source for every downstream reader at once.
+  — the raw encoder tick from a MCU (Teensy).
+- **Subscribes** ``/zero_estimated_states`` (``std_msgs/Empty``) — a event based signal 
+  to make the current estimated position turn to zero. This must be manually done by pressing 
+  zero button on the Verification System UI after the robot is already in it's targeted 
+  home position.
 - **Publishes** ``/estimated_states`` (``EncoderState``: ``position``, ``velocity``,
   ``acceleration``, their variances, and ``raw_ticks``). The published ``position`` is the
   raw encoder angle minus the zero offset — **not** the filter's own position state
@@ -74,48 +75,50 @@ Node Workflow
 
 .. The flow chart of this whole node
 
-Every new ``/encoder_raw`` message runs one pass of the filter in the callback ``_cb``. A
-separate, rare ``/zero_estimated_states`` message just moves the zero reference. The flow
-is:
-
 .. code-block:: text
 
-                    ┌──────────────────────────────────────────────┐
-   /encoder_raw ───▶│  _cb(msg)                                    │
-                    │    dt = msg.dt_us × 1e-6                      │
-                    │    z  = msg.ticks × ticks_to_rad             │
-                    └───────────────────────┬──────────────────────┘
+                    ┌─────────────────────────────────────────────────┐
+   /encoder_raw ───▶│  _cb(msg)                                       │
+                    │    dt = msg.dt_us × 1e-6                        │
+                    │    z  = msg.ticks × ticks_to_rad (last_raw_pos) │
+                    └───────────────────────┬─────────────────────────┘
+                                            │
+                          [Internal Logic in the _cb function]
+                                            │
                                             ▼
-                             first sample ever?  ──── yes ──▶  x[0] = z ; return
+                            first sample ever?  ──── yes ──▶  x[0] = z ; return
                                             │ no
                                             ▼
-                                   dt > 0 ?  ──── no ───▶  warn "bad dt" ; skip
+                                    dt > 0 ?  ──── no ───▶  warn "bad dt" ; skip
                                             │ yes
                                             ▼
                           F = build_F(dt)   (constant-jerk transition matrix)
                                             │
                                             ▼
-           PREDICT :  x⁻ = F·x                P⁻ = F·P·Fᵀ + Q
+                          PREDICT : x⁻ = F·x, P⁻ = F·P·Fᵀ + Q
                                             │
                                             ▼
-           UPDATE  :  y = z − H·x⁻           K = P⁻·Hᵀ·(H·P⁻·Hᵀ + R)⁻¹
-                      x = x⁻ + K·y           P = (I − K·H)·P⁻
+                      UPDATE  : y = z − H·x⁻, K = P⁻·Hᵀ·(H·P⁻·Hᵀ + R)⁻¹,
+                                x = x⁻ + K·y, P = (I − K·H)·P⁻
                                             │
                                             ▼
-              position = (ticks × ticks_to_rad) − zero_offset
-              velocity = x[1]        acceleration = x[2]
+                            position: (ticks × ticks_to_rad) − zero_offset
+                            velocity: x[1]        
+                            acceleration: x[2]
                                             │
                                             ▼
                         publish  /estimated_states  (EncoderState)
 
+  ------------------------------------------------------------------------------------------
 
    /zero_estimated_states (Empty) ──▶  _zero_cb()  :  zero_offset = last_raw_pos
 
-In words: convert the tick count to radians, seed the filter on the very first sample,
-and skip any sample with a bad time step. Otherwise build the transition matrix for this
-time step, **predict** the next state, **correct** it with the new measurement, and
-publish. The published position is the raw angle minus the current zero offset, while
-velocity and acceleration are taken from the filter's state.
+The incoming ``/encoder_raw`` will be calculated in the ``self._cb`` (subscription callback 
+function). The raw tick will be converted to the radian unit, then go through the **predict** 
+to get ``x⁻`` (predicted states estimate) and  ``P⁻`` (Predicted error covariance), then pass to the
+ **update** step to get ``x`` (corrected states estimate) and other variables. The published position 
+is the raw angle minus the current zero offset, while velocity and acceleration are taken 
+from the corrected states estimate vector.
 
 Examine the code
 ----------------
@@ -208,13 +211,13 @@ revolution is ``ticks_per_rev`` ticks and ``2π`` radians, so the factor is
        self._last_raw_pos_rad = 0.0
 
 These are the pieces of the filter. ``_x`` is the current estimate of the four states,
-starting at zero. ``_P`` is how unsure the filter is about that estimate. ``_Q`` is the
-process noise (how much we distrust the motion model) and ``_R`` is the measurement noise
-(how much we distrust the encoder). ``_H`` is the measurement matrix ``[1, 0, 0, 0]``,
-which says "the encoder measures position only." ``_initialized`` guards the first sample.
-The last two lines hold the zeroing state: ``_zero_offset_rad`` is the position we call
-zero, and ``_last_raw_pos_rad`` remembers the most recent raw position so a re-zero can
-capture it.
+starting at zero. ``_P`` is the error covariance, showing how unsure the filter is 
+about that estimate. ``_Q`` is the process noise (how much we distrust the motion model) 
+and ``_R`` is the measurement noise (how much we distrust the encoder). ``_H`` is the 
+measurement matrix ``[1, 0, 0, 0]``, which says "the encoder measures position only." 
+``_initialized`` guards the first sample. The last two lines hold the zeroing state: 
+``_zero_offset_rad`` is the position we call zero, and ``_last_raw_pos_rad`` remembers 
+the most recent raw position so a re-zero can capture it.
 
 **Constructor — ROS inputs and outputs.**
 
