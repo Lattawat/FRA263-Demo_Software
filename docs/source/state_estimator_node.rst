@@ -50,6 +50,9 @@ gets a **different value because the states live at different orders of magnitud
    :header-rows: 1
    :widths: 24 14 62
 
+   * - Parameter
+     - Value
+     - Meaning
    * - ``kf_r_position``
      - ``4.65e-6``
      - Measurement noise on the encoder position (in rad²). Larger = smoother, but trusts the encoder less.
@@ -116,7 +119,7 @@ Node Workflow
 The incoming ``/encoder_raw`` will be calculated in the ``self._cb`` (subscription callback 
 function). The raw tick will be converted to the radian unit, then go through the **predict** 
 to get ``x⁻`` (predicted states estimate) and  ``P⁻`` (Predicted error covariance), then pass to the
- **update** step to get ``x`` (corrected states estimate) and other variables. The published position 
+**update** step to get ``x`` (corrected states estimate) and other variables. The published position
 is the raw angle minus the current zero offset, while velocity and acceleration are taken 
 from the corrected states estimate vector.
 
