@@ -116,6 +116,15 @@ front, and the QoS profile is **RELIABLE** with **KEEP_LAST depth 10**.
 The node keeps a cache (the stored last message of every topic). A browser that connects
 late immediately receives that snapshot, so the dashboard never starts empty.
 
+Why LSL?
+^^^^^^^^
+
+The developed Base System is not developed on the ROS framework. Originally, LSL is famous 
+in the Brain-Computer Interface (BCI) field which need to handle a lot of time series signal 
+in real-time. Therefore, the LSL is selected to be the broadcasting tool for the Base System.
+
+---------------------------------------------------------------------------------------------------
+
 Node Workflow
 -------------
 
@@ -940,8 +949,11 @@ handshake (``threading.Event``)
 Future Works
 ------------
 
-- This node is too big and too complex. It should be separated to two nodes including 
-    1. States Interface Node: manage the actual states and estimated states from different source
-        (``mock_ui`` and ``LSL``) and pass the data for visualization to a Visualizer Node.
-    2. Visualizer node: Host the html and ws server and broadcasting the incoming data
-        to the front-end (UI) along with passing the user command from the UI back to the system.
+This node is too big and too complex. It should be separated to two nodes including
+
+1. States Interface Node: manage the actual states and estimated states from different
+   source (``mock_ui`` and ``LSL``) and pass the data for visualization to a Visualizer
+   Node.
+2. Visualizer node: Host the html and ws server and broadcasting the incoming data
+   to the front-end (UI) along with passing the user command from the UI back to the
+   system.
