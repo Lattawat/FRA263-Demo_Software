@@ -133,12 +133,12 @@ The big picture
 .. code-block:: text
 
    [thread: lsl-actual-states]                          (Flow 2 — LSL → ROS)
-   LSL inlet "ActualStates" ──pull──▶ deg→rad, − actual offset ──▶ publish /actual_states
+   LSL inlet "ActualStates" ──pull──▶ deg2rad, apply offset ──▶ publish to /actual_states
 
    ──────────────────────────────────────────────────────────────────────────────────────
 
    [thread: lsl-event-trigger]                          (Flow 3 — LSL → ROS)
-   LSL inlet "EventTrigger" ──pull──▶ parse the JSON string ──▶ publish /event_trigger
+   LSL inlet "EventTrigger" ──pull──▶ parse the JSON string ──▶ publish to /event_trigger
 
    ──────────────────────────────────────────────────────────────────────────────────────
 
@@ -255,6 +255,8 @@ one special path itself: ``GET /config.json`` returns ``{"ws_port": 9090}``, so 
 browser can discover the right WebSocket port from the same machine that served the page
 — no hardcoded port in the JavaScript.
 
+-----------------------------------------------------------------------------------------------
+
 Browser commands
 ^^^^^^^^^^^^^^^^
 
@@ -286,6 +288,8 @@ dispatcher — one ``if/elif`` chain keyed on the ``command`` field):
        ``/zero_estimated_states`` so the State Estimator re-zeros at the source. Actual
        side: adds the current actual position to the local offset, because
        ``/actual_states`` is produced inside this node.
+
+-----------------------------------------------------------------------------------------------
 
 Examine the code
 ----------------
@@ -890,6 +894,13 @@ callback
     A function that runs automatically when something arrives — a ROS message, or a new
     WebSocket connection.
 
+fan-out / fan-in
+    **Fan-out** = one input sent out to many destinations; **fan-in** = many sources
+    funnelled into one point. (The word comes from electronics: how many gate inputs one
+    output pin can drive.) The main thread is called the *fan-out hub* because many
+    producers funnel into the ROS topics, and its callbacks send every message out to all
+    connected browsers — and the estimated states to the LSL outlet too.
+
 thread-safe
     Safe to call from another thread without corrupting shared data. Here it is done by
     handing work to the event loop with ``asyncio.run_coroutine_threadsafe``.
@@ -923,3 +934,14 @@ handshake (``threading.Event``)
     One thread waits (``wait()``) until another signals (``set()``) that it is ready —
     used so the constructor only continues after the WebSocket server is listening, and
     reused as a stop flag for the LSL workers.
+
+-----------------------------------------------------------------------------------------------
+
+Future Works
+------------
+
+- This node is too big and too complex. It should be separated to two nodes including 
+    1. States Interface Node: manage the actual states and estimated states from different source
+        (``mock_ui`` and ``LSL``) and pass the data for visualization to a Visualizer Node.
+    2. Visualizer node: Host the html and ws server and broadcasting the incoming data
+        to the front-end (UI) along with passing the user command from the UI back to the system.

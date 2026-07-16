@@ -123,6 +123,8 @@ to get ``x⁻`` (predicted states estimate) and  ``P⁻`` (Predicted error covar
 is the raw angle minus the current zero offset, while velocity and acceleration are taken 
 from the corrected states estimate vector.
 
+-------------------------------------------------------------------------------------------------------
+
 Examine the code
 ----------------
 
