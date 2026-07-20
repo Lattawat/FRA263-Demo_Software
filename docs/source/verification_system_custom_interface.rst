@@ -6,8 +6,7 @@ Custom Interface
 
 The Verification System does not use only the standard ROS 2 message types. It defines
 its own **interface package**, ``claude_visualizer_interface``, which holds five message
-types and one service type. This page is the reference for all of them: what each field
-means, and which node produces or consumes it.
+types and one service type. 
 
 An interface package is a package that contains **only** definitions — no node code. It is
 built with ``ament_cmake`` and the ``rosidl_generate_interfaces`` macro, which reads every
@@ -27,10 +26,10 @@ Python classes at build time:
      DEPENDENCIES builtin_interfaces std_msgs
    )
 
-Keeping the definitions in a separate package is what lets very different programs agree on
-the same data layout. The Teensy firmware is written in C and the four nodes are written in
-Python, but both are generated from the same ``.msg`` file, so a message built on the
-microcontroller can be unpacked by a Python node without anyone writing a converter.
+These custom messages are directly referred by all of the ROS2 node and relatively referred 
+by the firmware in the ``/cluade-visaulizer-ws/encoder_data_publisher`` directory to help
+during the firmware building process. So a message built on the microcontroller can be understand 
+by a Python node without anyone writing a converter.
 
 In code the types are referred to by package and kind, for example
 ``claude_visualizer_interface/msg/EncoderRaw`` or
@@ -51,18 +50,18 @@ Summary
    * - ``EncoderRaw``
      - msg
      - ``encoder_raw``
-     - Teensy firmware, ``mock_encoder``, ``mock_ui``
+     - Teensy firmware, ``mock_ui``
      - Raw encoder ticks straight from the hardware.
    * - ``EncoderState``
      - msg
      - ``estimated_states``
      - ``encoder_reader``
-     - Kalman-filtered position, velocity and acceleration.
+     - Raw unit converted position and Kalman-filtered velocity and acceleration.
    * - ``ActualStates``
      - msg
      - ``actual_states``
-     - ``web_visualizer``
-     - What the robot controller reports about itself.
+     - ``web_visualizer``, ``mock_ui``
+     - The actual states of the robot.
    * - ``EventTrigger``
      - msg
      - ``event_trigger``
@@ -77,13 +76,14 @@ Summary
      - srv
      - ``update_criteria``
      - server: ``experiment_evaluator``
-     - Read and change the pass/fail limits while the system is running.
+     - Read and change the pass/fail criteria while the system is running.
 
-Every topic name above is written as a **relative name** — no leading slash. A relative
-name is expanded with the namespace the node was launched into, so under the launch
-namespace ``/G7/`` the topic ``encoder_raw`` becomes ``/G7/encoder_raw``. This is what
-allows several groups to run their own copy of the system on one network without their
-topics colliding.
+.. note::
+  
+  Every topic name above is written as a relative name (no leading slash). A relative
+  name is expanded with the namespace the specified during the launch process, so under the launch
+  namespace ``/G7/`` the topic ``encoder_raw`` becomes ``/G7/encoder_raw``. This is how we handle the 
+  concurrnt multi-machine running on one network without the topics colliding.
 
 claude_visualizer_interface/EncoderRaw Message
 ----------------------------------------------
@@ -116,23 +116,30 @@ Compact Message Definition
 Where it is used
 ^^^^^^^^^^^^^^^^
 
-Published by the **Teensy 4.1 firmware** through micro-ROS, and by ``mock_encoder`` or
-``mock_ui`` when the system is run without hardware. Subscribed by the **State Estimator
-node** (``encoder_reader``), which is the only consumer.
+Published by the **Teensy 4.1 firmware** through micro-ROS when the system is run on hardware
+, and by ``mock_ui`` when the system is run without hardware. Subscribed by the **State Estimator 
+node**.
 
-This is the entry point of the whole measurement chain. Everything downstream —
-the filtered states, every evaluation metric, every plot in the browser — is derived from
-this message. If it stops arriving, the State Estimator has nothing to predict from and the
-rest of the system goes silent.
+.. This is the entry point of the whole measurement chain. Everything downstream —
+.. the filtered states, every evaluation metric, every plot in the browser — is derived from
+.. this message. If it stops arriving, the State Estimator has nothing to predict from and the
+.. rest of the system goes silent.
 
-Two fields need a note beyond their comment:
+.. Two fields need a note beyond their comment:
 
-- ``ticks`` is **cumulative and signed**, not a per-sample delta. It keeps counting up or
-  down as the shaft turns, so the consumer works out movement by subtracting the previous
-  value.
+.. - ``ticks`` is **cumulative and signed**, not a per-sample delta. It keeps counting up or
+..   down as the shaft turns, so the consumer works out movement by subtracting the previous
+..   value.
+.. - ``dt_us`` is currently **hard-coded to 10000** by the firmware (10 ms, i.e. 100 Hz)
+..   rather than measured from the real elapsed time. The State Estimator therefore treats the
+..   sample interval as fixed. See the Firmware page for why.
+
+Note:
+
 - ``dt_us`` is currently **hard-coded to 10000** by the firmware (10 ms, i.e. 100 Hz)
   rather than measured from the real elapsed time. The State Estimator therefore treats the
-  sample interval as fixed. See the Firmware page for why.
+  sample interval as fixed.
+
 
 claude_visualizer_interface/EncoderState Message
 -------------------------------------------------
@@ -179,27 +186,32 @@ Where it is used
 ^^^^^^^^^^^^^^^^
 
 Published by the **State Estimator node**. Subscribed by the **Web Visualizer node**
-(which forwards it to the browser and pushes it back out on an LSL outlet) and by the
+(which forwards it to the browser and pushes it to the Base System through an LSL outlet) and by the
 **Experiment Evaluator node**.
 
-This message is the single source of motion truth for the rest of the system. The evaluator
-computes *every* metric from it — error, overshoot, settling time, peak speed, peak
-acceleration, precision spread — and the browser plots it live. An encoder gives position
-only, so without the velocity and acceleration estimates carried here there would be no way
-to score a speed or acceleration test at all.
+.. This message is the single source of motion truth for the rest of the system. The evaluator
+.. computes *every* metric from it — error, overshoot, settling time, peak speed, peak
+.. acceleration, precision spread — and the browser plots it live. An encoder gives position
+.. only, so without the velocity and acceleration estimates carried here there would be no way
+.. to score a speed or acceleration test at all.
 
-The three ``*_variance`` fields are **diagnostics**, not control data. A variance is the
-filter's own statement of how uncertain it is about that state, so watching these values
-settle to small numbers is how you confirm the filter is converging while tuning the ``Q``
-and ``R`` values. Nothing in the system makes a decision from them.
+.. The three ``*_variance`` fields are **diagnostics**, not control data. A variance is the
+.. filter's own statement of how uncertain it is about that state, so watching these values
+.. settle to small numbers is how you confirm the filter is converging while tuning the ``Q``
+.. and ``R`` values. Nothing in the system makes a decision from them.
 
-``raw_ticks`` is likewise a pass-through, carried only so that a log can be checked against
-the untouched hardware count.
+.. ``raw_ticks`` is likewise a pass-through, carried only so that a log can be checked against
+.. the untouched hardware count.
+
+Note:
+
+- The ``*_variance`` fields are the calculated variance of the Kalman Filter. You can confirm the 
+convergence of the filter by observing these values settle to small number while tuning the
+``Q`` and ``R`` values.
 
 .. note::
 
-   The ``position`` field does **not** carry the Kalman-estimated position. The State
-   Estimator deliberately publishes the raw measured position instead, and only
+   The ``position`` field does **not** is raw measured position, and only
    ``velocity`` and ``acceleration`` come from the filter. The reason is explained on the
    State Estimator page.
 
@@ -237,9 +249,11 @@ Compact Message Definition
 Where it is used
 ^^^^^^^^^^^^^^^^
 
-Produced by the robot controller on the Base System side, sent over LSL, and turned into a
-ROS message by the **Web Visualizer node**. The Web Visualizer then subscribes to the very
-same topic it publishes on, and forwards whatever arrives to the browser.
+This is the actual robot data sent over LSL by the Base System or ``mock_ui`` (if the system is run 
+without hardware), and turned into a ROS message by the **Web Visualizer node**. The Web Visualizer 
+then subscribes to the very same topic it publishes on, and forwards whatever arrives to the browser. 
+This data will be used for comapring the actual robot performance with the measured robot performance 
+(``/estimated_states``).
 
 Publishing and subscribing to one topic in the same node looks strange at first, but it is
 deliberate. It is a **loopback**: the node does not treat its own LSL bridge as the only
@@ -247,10 +261,10 @@ possible source. Any other producer on the network — ``mock_ui``, for example 
 ``actual_states`` and the browser still receives it, because the browser is fed from the
 subscription rather than from the bridge.
 
-The importance of this message is comparison. ``EncoderState`` is what the *encoder*
-measured; ``ActualStates`` is what the *controller believes it did*. Plotting the two
-against each other is what exposes a controller that reports a move it never actually
-completed.
+.. The importance of this message is comparison. ``EncoderState`` is what the *encoder*
+.. measured; ``ActualStates`` is what the *controller believes it did*. Plotting the two
+.. against each other is what exposes a controller that reports a move it never actually
+.. completed.
 
 claude_visualizer_interface/EventTrigger Message
 -------------------------------------------------
@@ -280,27 +294,38 @@ Compact Message Definition
 Where it is used
 ^^^^^^^^^^^^^^^^
 
-Published by the **Web Visualizer node** (bridging the LSL marker stream, plus two commands
-the browser injects directly) and by **mock_ui**. Subscribed by the **Experiment Evaluator
+This is the actual robot data sent over LSL by the Base System and ``mock_ui``, using the same 
+concept with the ``/actual_states`` data. It is subscribed by the **Experiment Evaluator
 node**, and by the Web Visualizer itself as a loopback so the browser sees every command.
 
-This message is the evaluator's ears. The evaluator is event-driven: it sits idle and
-measures nothing until an ``EventTrigger`` tells it a test has started, which test it is,
-and with what settings. Without this topic the evaluator would never wake up, and no run
-would ever be scored.
-
-The ``event`` field is a single ``string``, but it carries a whole JSON object. This keeps
-the message type stable — a new test type or a new setting is a new JSON key, not a
-rebuild of the interface package and every node that depends on it. The trade-off is that
+The Experiment Evaluator use this message to start the evaluation process. The data inside the 
+message is an event data, telling the Experiment Evaluation to know which evaluation logic
+and set of crieteria to be used in this session. The trade-off of this method is that
 the fields are no longer checked by the ROS type system, so the keys are documented in
 :ref:`event-payloads` below.
+
+.. Published by the **Web Visualizer node** (bridging the LSL marker stream, plus two commands
+.. the browser injects directly) and by **mock_ui**. Subscribed by the **Experiment Evaluator
+.. node**, and by the Web Visualizer itself as a loopback so the browser sees every command.
+
+.. This message is the evaluator's ears. The evaluator is event-driven: it sits idle and
+.. measures nothing until an ``EventTrigger`` tells it a test has started, which test it is,
+.. and with what settings. Without this topic the evaluator would never wake up, and no run
+.. would ever be scored.
+
+.. The ``event`` field is a single ``string``, but it carries a whole JSON object. This keeps
+.. the message type stable — a new test type or a new setting is a new JSON key, not a
+.. rebuild of the interface package and every node that depends on it. The trade-off is that
+.. the fields are no longer checked by the ROS type system, so the keys are documented in
+.. :ref:`event-payloads` below.
 
 .. note::
 
    The comment in the ``.msg`` file says the JSON must contain an ``"event"`` key as the
    type discriminator. The system as built does not do this: every real payload uses
    ``mode`` and ``action`` as the discriminator pair instead, and the ``"event"`` key
-   appears only in the fallback described below. Trust the payload tables, not the comment.
+   appears only in the fallback described below. 
+  ..  Trust the payload tables, not the comment.
 
 claude_visualizer_interface/ExperimentEval Message
 ---------------------------------------------------
@@ -314,7 +339,8 @@ Raw Message Definition
 
    std_msgs/Header header
    string action    # experiment type: point_to_point | pick_place | performance | precision
-   string data      # JSON metrics (eval_live) or summary with pass/fail (eval_summary)
+   string data      # JSON metrics (eval_live) or summary with pass/fail (eval_summary)  
+                    # the data are different across each experiement. It is possible because of JSON string format.
 
 Compact Message Definition
 ^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -331,18 +357,19 @@ Where it is used
 Published by the **Experiment Evaluator node** on two topics, and subscribed by the **Web
 Visualizer node**, which forwards both to the browser:
 
-- ``eval_live`` — sent repeatedly while a run is in progress, throttled to 10 Hz. It drives
-  the live evaluation panel, so the lecturer can watch the error shrinking instead of
+- ``eval_live`` — sent repeatedly while a run is in progress, throttled to 10 Hz. It updates
+  the live evaluation panel, so the lecturer can observe the crucial information of the evaluation without 
   waiting for the run to end. The throttle exists because the states arrive at 100 Hz and
   no browser needs to redraw that often.
-- ``eval_summary`` — sent once, when the run finishes. This is the pass/fail verdict, and
-  it is the reason the whole Verification System exists.
+- ``eval_summary`` — sent once, when the run finishes. This contains the summary information
+  of that particular experiment with the pass/fail judgement in each requirements.
+  .. This is the pass/fail verdict, andit is the reason the whole Verification System exists.
 
-Both topics carry the same message type, which is why ``action`` matters: it tells the
-receiver which of the four test types produced this message, and therefore how to read
-``data``. The same JSON-in-a-string approach as ``EventTrigger`` is used here, for the same
-reason — each test aspect reports a different set of metrics, and a fixed field list could
-not hold all of them.
+.. Both topics carry the same message type, which is why ``action`` matters: it tells the
+.. receiver which of the four test types produced this message, and therefore how to read
+.. ``data``. The same JSON-in-a-string approach as ``EventTrigger`` is used here, for the same
+.. reason — each test aspect reports a different set of metrics, and a fixed field list could
+.. not hold all of them.
 
 claude_visualizer_interface/UpdateCriteria Service
 ---------------------------------------------------
