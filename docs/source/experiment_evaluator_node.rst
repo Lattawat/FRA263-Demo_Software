@@ -1,7 +1,9 @@
-Experiment Evaluator Node (Automatic Performance Scoring)
-==========================================================
+Experiment Evaluator Node 
+=========================
 
 .. Node description (the design idea, detail, and other crucial info)
+
+**Automatic Robot's Performance Evaluation**
 
 This node is the judge of the Verification System. Before, a person had to watch the
 logged data by eye and decide whether the robot performed well; the node

@@ -1,16 +1,18 @@
-Teensy 4.1 Firmware (Encoder Publisher)
-=======================================
+Teensy 4.1 Firmware
+===================
 
 .. Node description (the design idea, detail, and other crucial info)
 
+**Encoder Raw Ticks Publisher**
+
 This firmware is the real hardware source of the ``EncoderRaw`` message. It runs on a
 **Teensy 4.1** microcontroller, reads the quadrature encoder mounted on the test rig, and
-publishes the raw tick count as a micro-ROS node named ``encoder_data_publisher``. On a real
-setup this is what replaces the ``mock_encoder`` and ``mock_ui`` publishers that stand in for
-the encoder when the system is run without hardware.
+publishes the raw tick count as a micro-ROS node named ``encoder_data_publisher``. During
+a testing session, this node will be replaced by ``mock_ui`` which programmed to publishing
+the same type of information.
 
-A microcontroller cannot join a ROS 2 network on its own. It speaks **micro-ROS** — a cut-down
-ROS 2 client library for embedded devices — and reaches the full ROS 2 graph through the
+A microcontroller cannot join a ROS 2 network on its own. It uses **micro-ROS**, a cut-down
+ROS 2 client library for embedded devices, and reaches the full ROS 2 graph through the
 **micro-ROS agent**, a small program running on the host PC that bridges the Teensy's serial
 link to normal ROS 2 topics.
 
@@ -23,9 +25,8 @@ link to normal ROS 2 topics.
                       └──────────────────────────┘
 
 The Teensy and the agent talk over USB serial using **XRCE-DDS** (the lightweight transport
-micro-ROS uses in place of full DDS). The agent is the only part that touches the real ROS 2
-graph, so every other node — the State Estimator, the Web Visualizer — sees ``/G<N>/encoder_raw``
-as an ordinary topic and never knows a microcontroller produced it.
+micro-ROS uses in place of full DDS). The other nodes will see the ``/G<N>/encoder_raw`` message
+as pulished by the micro-ROS agent.
 
 **Key settings.** These are fixed in the firmware and the build config, and several of them
 *must* match the host PC or the messages never arrive.
@@ -66,14 +67,15 @@ as an ordinary topic and never knows a microcontroller produced it.
 **Interfaces.** The firmware has one interface:
 
 - **Publishes** ``encoder_raw`` (``EncoderRaw``: ``ticks``, ``raw_position``, ``dt_us``, and
-  the standard ``header``) — the entry point of the whole measurement chain; everything
-  downstream is derived from it. ``ticks`` is the cumulative signed count read straight from
-  the encoder, ``raw_position`` is that count run through ``ticks2rad``, and ``dt_us`` is the
-  fixed 10000 µs described above. The topic name is written **relative** (``encoder_raw``, no
-  leading slash), so the node namespace ``/G<N>`` is added in front to give
-  ``/G<N>/encoder_raw``.
+  the standard ``header``)
+  - ``ticks``: the cumulative signed count read straight from the encoder.
+  - ``raw_position``: the unit coverted tick by ``ticks2rad`` function
+  - ``dt_us``: fixed 10000 µs described above.
+  
+The topic name is written **relative** (``encoder_raw``, no leading slash), so the node namespace ``/G<N>`` 
+is added in front to give ``/G<N>/encoder_raw`` as other nodes did.
 
-Each message is time-stamped with ``rmw_uros_epoch_nanos()`` — the agent's clock, not the
+Each message is time-stamped with ``rmw_uros_epoch_nanos()`` — **the agent's clock**, not the
 Teensy's. A microcontroller has no real-time clock of its own; on power-up its time starts
 from zero. The call ``rmw_uros_sync_session()`` in ``setup()`` syncs the node to the agent's
 epoch once at start, so from then on every stamp is real wall-clock time. Without that sync
@@ -82,16 +84,15 @@ the stamps would be boot-relative and useless for lining this stream up against 
 How the custom interface is used on the microcontroller
 -------------------------------------------------------
 
-The firmware publishes ``EncoderRaw``, which is one of *our* message types from the
-``claude_visualizer_interface`` package — not a standard ROS 2 message. Getting a custom
-message onto a microcontroller works differently from a normal ROS 2 package, and this is the
-part most worth understanding.
+The firmware publishes ``EncoderRaw``, which is one of *our* custom messages from the
+``claude_visualizer_interface`` package. Getting a custom message onto a microcontroller 
+works differently from a normal ROS 2 package.
 
 On a desktop, adding a message package is just a build dependency: the message headers are
 generated when the workspace is built and linked in at run time. In micro-ROS there is no run
 time to link against. The **entire micro-ROS C library is cross-compiled into a single static
 ``.a`` file** when PlatformIO builds the firmware. A custom message therefore has to be part
-of *that* build — it cannot be added afterwards. Three pieces make this happen.
+of *that* build. It cannot be added afterwards. Three pieces make this happen.
 
 **1. ``platformio.ini`` — the build and transport config.**
 
@@ -122,10 +123,8 @@ there that points back to the real package in the ROS 2 workspace:
    encoder_data_publisher/extra_packages/claude_visualizer_interface
        → ../../src/claude_visualizer_interface
 
-Because it is a symlink, there is only ever **one** copy of the ``.msg`` files. The host-side
-nodes and the firmware are both built from the same definition, so ``EncoderRaw`` can never
-drift out of sync between the two. If the messages were copied instead, every edit would have
-to be copied again by hand.
+Because it is a symlink, the nodes on the PC and the firmware are both built from the same definition, 
+so ``EncoderRaw`` can never drift out of sync between the two.
 
 **3. ``colcon.meta`` — list the package so it is compiled in.**
 
@@ -199,12 +198,12 @@ timer callback that the executor fires every 10 ms.
                                                     │
                                                     ▼
                                           ┌──────────────────────────────────────┐
-                                          │ timer_cb()                            │
-                                          │   stamp  = rmw_uros_epoch_nanos()     │
-                                          │   ticks  = encoder.read()             │
-                                          │   raw_position = ticks2rad(ticks)     │
-                                          │   dt_us  = 10000                      │
-                                          │   publish /G<N>/encoder_raw           │
+                                          │ timer_cb()                           │
+                                          │   stamp  = rmw_uros_epoch_nanos()    │
+                                          │   ticks  = encoder.read()            │
+                                          │   raw_position = ticks2rad(ticks)    │
+                                          │   dt_us  = 10000                     │
+                                          │   publish /G<N>/encoder_raw          │
                                           └──────────────────────────────────────┘
 
 The one part that is easy to get wrong is why ``loop()`` calls ``rclc_executor_spin_some`` and

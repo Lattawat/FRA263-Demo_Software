@@ -1,7 +1,9 @@
-Web Visualizer Node (LSL ↔ ROS 2 Bridge + Web Server)
-======================================================
+Web Visualizer Node
+===================
 
 .. Node description (the design idea, detail, and other crucial info)
+
+**LSL ↔ ROS 2 Bridge and a Web Server**
 
 This node is the connector of the Verification System. It links three worlds that cannot
 talk to each other directly: **LSL** (the Base System's streams), **ROS 2** (the

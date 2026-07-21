@@ -1,11 +1,11 @@
-State Estimator Node (Kalman Filter)
-====================================
+State Estimator Node
+====================
 
 .. Node description (the design idea, detail, and other crucial info)
 
-This node estimates the velocity and acceleration of the position data from 
-``\encoder_raw `` ROS2 topic which is a tick information. So, we need to 
-convert the data to radian before using in the calculation process. 
+This node use a **Kalman Filter** to estimate the velocity and acceleration 
+of the position data from ``\encoder_raw `` ROS2 topic which is a tick information. 
+So, we need to convert the data to radian before using in the calculation process. 
 This project we use a **constant-jerk Kalman filter** whose state is 
 ``[position, velocity, acceleration, jerk]``.
 
