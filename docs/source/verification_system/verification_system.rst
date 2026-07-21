@@ -11,10 +11,10 @@ explained here.
 .. toctree::
    :maxdepth: 1
 
-   verification_system/verification_system_custom_interface/verification_system_custom_interface.rst
-   verification_system/teensy_firmware.rst
-   verification_system/state_estimator_node.rst
-   verification_system/web_visualizer_node.rst
-   verification_system/web_ui.rst
-   verification_system/experiment_evaluator_node.rst
-   verification_system/mock_ui_script.rst
+   verification_system_custom_interface/verification_system_custom_interface.rst
+   teensy_firmware.rst
+   state_estimator_node.rst
+   web_visualizer_node.rst
+   web_ui.rst
+   experiment_evaluator_node.rst
+   mock_ui_script.rst

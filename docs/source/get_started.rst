@@ -88,7 +88,7 @@ Check that it is there:
 .. note::
 
    Sourcing ``setup.bash`` only affects the terminal you run it in. Every new terminal needs
-   it again — see :ref:`environment-recipe`.
+   it again — see :ref:`environment-prep`.
 
 Step 2 — Install the system packages
 ------------------------------------
@@ -115,8 +115,9 @@ user cannot open them until it belongs to the ``dialout`` group:
 
    sudo usermod -aG dialout $USER
 
-Log out and back in for the group to take effect. Skipping this gives
-``Permission denied: '/dev/ttyACM0'`` later, with nothing else to explain it.
+Log out the session (the same method as shutdown, but select log out instead) and back in 
+to take effect. Skipping this gives ``Permission denied: '/dev/ttyACM0'`` later, with 
+nothing else to explain it.
 
 Step 3 — Clone the repository
 -----------------------------
@@ -129,9 +130,9 @@ Step 3 — Clone the repository
 
 The rest of this page uses ``~/FRA263-Demo_Software`` as the project root.
 
-**What the clone does not bring.** ``build/``, ``install/``, ``log/`` and ``.venv`` are
-ignored by git, so you create them yourself in the steps below. The micro-ROS folders are a
-special case — see Step 5.
+.. **What the clone does not bring.** ``build/``, ``install/``, ``log/`` and ``.venv`` are
+.. ignored by git, so you create them yourself in the steps below. The micro-ROS folders are a
+.. special case — see Step 5.
 
 Step 4 — Create the Python environment
 --------------------------------------
@@ -143,6 +144,11 @@ The project keeps its Python packages in one virtual environment at the reposito
    cd ~/FRA263-Demo_Software
    python3 -m venv .venv
    source .venv/bin/activate
+
+Make sure that the (.venv) is activated. Then, install the dependencies.
+
+..code-block:: bash
+
    pip install -r requirements.txt
 
 ``requirements.txt`` holds every pip package the project needs — ``pylsl``, ``websockets``,
@@ -222,10 +228,9 @@ The first build takes several minutes, mostly generating the custom message type
 
 .. warning::
 
-   **Do not use** ``--symlink-install``. It makes ``install/`` point back at the files in
-   ``src/`` instead of copying them. The moment you rename or delete a source file, the link
-   goes stale and the workspace keeps loading an old or missing file — and the error it
-   throws never points at the real cause. Always build with plain ``colcon build``.
+   **Do not use** ``--symlink-install``. Always build with plain ``colcon build``.
+   The developer cannot remember the reason, but there are some error when ``install/`` 
+   point back at the files in ``src/`` instead of copying them.
 
    If this workspace was ever built with ``--symlink-install``, delete ``build/``,
    ``install/`` and ``log/`` first, then build again.
@@ -250,7 +255,7 @@ PlatformIO. Three settings **must** match the host PC, or the messages never arr
      - The ROS 2 distribution on this PC (Step 1).
    * - Domain ID
      - ``156``
-     - ``ROS_DOMAIN_ID`` on the host — see :ref:`environment-recipe`.
+     - ``ROS_DOMAIN_ID`` on the host — see :ref:`environment-prep`.
    * - ``GROUP_NUMBER``
      - ``N``
      - The ``group_number`` everything else is started with.
@@ -307,10 +312,10 @@ Run these before trying to start anything. Each line tells you which step failed
 Running the system
 ------------------
 
-.. _environment-recipe:
+.. _environment-prep:
 
-The environment recipe
-~~~~~~~~~~~~~~~~~~~~~~
+The environment preparation
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 **Every new terminal starts the same way.** A terminal that skips a line here will fail with
 a missing command or a missing module, so run all four in each terminal before the commands
@@ -518,7 +523,7 @@ Troubleshooting
      - ``source ~/FRA263-Demo_Software/.venv/bin/activate``
    * - ``ModuleNotFoundError: No module named 'rclpy'``
      - ROS 2 not sourced (the environment alone does not provide it).
-     - Source ROS 2 as well — see :ref:`environment-recipe`.
+     - Source ROS 2 as well — see :ref:`environment-prep`.
    * - ``Package 'micro_ros_agent' not found``, or ``src/uros`` is empty
      - Step 5 was skipped, or the git links were never filled.
      - Run Step 5. ``git submodule update --init`` will not work here.
@@ -541,6 +546,6 @@ Troubleshooting
 Where to go next
 ----------------
 
-- :doc:`system_overview` — how the parts fit together and what each one does.
-- :doc:`verification_system/verification_system` — the design of each Verification System node.
-- :doc:`verification_system/teensy_firmware` — the encoder firmware in detail.
+- :doc:`system_overview` — the architecture and the overview of the system.
+- :doc:`verification_system/verification_system` — the design of each node in Verification System.
+- :doc:`verification_system/teensy_firmware` — the Teensy 4.1 firmware in detail.
