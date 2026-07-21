@@ -8,7 +8,7 @@ Teensy 4.1 Firmware
 This firmware is the real hardware source of the ``EncoderRaw`` message. It runs on a
 **Teensy 4.1** microcontroller, reads the quadrature encoder mounted on the test rig, and
 publishes the raw tick count as a micro-ROS node named ``encoder_data_publisher``. During
-a testing session, this node will be replaced by ``mock_ui`` which programmed to publishing
+a testing session, this node will be replaced by ``mock_ui``, which is programmed to publish
 the same type of information.
 
 A microcontroller cannot join a ROS 2 network on its own. It uses **micro-ROS**, a cut-down
@@ -26,7 +26,7 @@ link to normal ROS 2 topics.
 
 The Teensy and the agent talk over USB serial using **XRCE-DDS** (the lightweight transport
 micro-ROS uses in place of full DDS). The other nodes will see the ``/G<N>/encoder_raw`` message
-as pulished by the micro-ROS agent.
+as published by the micro-ROS agent.
 
 **Key settings.** These are fixed in the firmware and the build config, and several of them
 *must* match the host PC or the messages never arrive.
@@ -68,12 +68,13 @@ as pulished by the micro-ROS agent.
 
 - **Publishes** ``encoder_raw`` (``EncoderRaw``: ``ticks``, ``raw_position``, ``dt_us``, and
   the standard ``header``)
+
   - ``ticks``: the cumulative signed count read straight from the encoder.
-  - ``raw_position``: the unit coverted tick by ``ticks2rad`` function
-  - ``dt_us``: fixed 10000 µs described above.
-  
-The topic name is written **relative** (``encoder_raw``, no leading slash), so the node namespace ``/G<N>`` 
-is added in front to give ``/G<N>/encoder_raw`` as other nodes did.
+  - ``raw_position``: the tick count converted to radians by the ``ticks2rad`` function.
+  - ``dt_us``: the fixed 10000 µs described above.
+
+The topic name is written **relative** (``encoder_raw``, no leading slash), so the node namespace ``/G<N>``
+is added in front to give ``/G<N>/encoder_raw``, just like the other nodes.
 
 Each message is time-stamped with ``rmw_uros_epoch_nanos()`` — **the agent's clock**, not the
 Teensy's. A microcontroller has no real-time clock of its own; on power-up its time starts
