@@ -26,7 +26,7 @@ There are two channels. HTTP serves the three files and a small ``/config.json``
 load. The WebSocket then stays open for the whole session: the node pushes topics down to the
 browser, and the browser sends commands back up.
 
-The three files
+File Structure
 ---------------
 
 - ``index.html`` — the page skeleton: the header controls, the left and right panel, the tabs, 
@@ -95,10 +95,10 @@ bottom as a conversation over time between the browser and the node's two server
            │ ════════════════════════════════════════════════════▶│
            │                            │                         │
       ── 2. snapshot + live ──          │                         │
-           │  last-known message per topic                        │
-           ◀══════════════════════════════════════════════════════│
-           │  estimated_states / eval_live / … (live)             │
-           ◀══════════════════════════════════════════════════════│
+           │  last-known message per topic (-1 iteration)         │
+           │◀════════════════════════════════════════════════════ │
+           │  estimated_states / eval_live / … (current iteration)│
+           │◀════════════════════════════════════════════════════ │
            │                            │                         │
       ── 3. command ──                  │                         │                 
            │  { command } on button press                         │
@@ -111,8 +111,10 @@ bottom as a conversation over time between the browser and the node's two server
 
 The port is fetched first because the node decides it at launch, so the browser cannot know it
 ahead of time. After that the WebSocket is opened once and left open. On connect the WebSocket
-server first replays the last-known message on each topic, so a freshly opened tab shows the
-current state at once, then the live stream follows. Every message is handed to the panel that
+server first replays the newest message it has already sent on each topic — a cached
+snapshot, one message per topic — so a freshly opened or reloaded tab shows the current
+state at once instead of a blank screen until the next update (only topics that have already
+produced a message are replayed), then the live stream follows. Every message is handed to the panel that
 needs it, every button builds one command and sends it, and if the socket ever drops the page
 reconnects on its own. The server side of this is explained on the Web Visualizer node page.
 
@@ -221,30 +223,73 @@ the matching ROS action; the other five commands are listed in Interfaces above.
 Important UI functions
 ----------------------
 
-The parts of the dashboard and what each is for. Every function named below lives in
-``app.js``; a ``→`` shows the order the functions run.
+The parts of the dashboard and what each is for, with the ``app.js`` functions behind each
+flow shown in the order they run.
 
 - **Live panel** — rolling plots of position, velocity and acceleration, estimated against
   actual. It runs the whole time the page is open.
-  *In code:* ``pushLive`` (appends each estimated states sample to the rolling buffers) and
-  ``onActualStates`` (stores the latest actual states sample) → ``redraw`` (the 30 Hz draw loop
-  that repaints every plot).
+
+  .. code-block:: text
+
+     In code:
+
+     ┌───────────────────────────────────┐
+     │ **function pushLive(msg)**        │
+     │   appends each estimated states   │      ┌────────────────────────────┐
+     │   sample to the rolling buffers   │      │ **function redraw()**      │
+     │                                   │ ───▶ │   the 30 Hz draw loop that │
+     │ **function onActualStates(msg)**  │      │   re-renders every plot    │
+     │   stores the latest actual states │      └────────────────────────────┘
+     │   sample                          │
+     └───────────────────────────────────┘
+
 - **PROFILE tab** — opens when a test starts. It shows the run's own plots (estimated against
   target), the live metrics while it runs, and the pass/fail summary when it ends.
-  *In code:* ``onEventTrigger`` (reacts to an event trigger) → ``startExperiment`` (labels the
-  run, clears the eval panel) → ``startProfile`` (opens the tab, starts collecting the run's
-  data); ``onEvalLive`` (receives the live metrics) → ``renderMetrics`` (draws the live metrics
-  rows); ``onEvalSummary`` (receives the summary) → ``renderSummary`` (draws the pass/fail
-  summary).
+
+  .. code-block:: text
+
+     In code:
+
+     ┌──────────────────────────────────┐      ┌────────────────────────────────────┐      ┌──────────────────────────────────┐
+     │ **function onEventTrigger(msg)** │      │ **function startExperiment(data)** │      │ **function startProfile({...})** │
+     │   reacts to an event trigger     │ ───▶ │   labels the run, clears           │ ───▶ │   opens the PROFILE tab,         │
+     └──────────────────────────────────┘      │   the eval panel                   │      │   collects the run's data        │
+                                               └────────────────────────────────────┘      └──────────────────────────────────┘
+
+     ┌──────────────────────────────┐      ┌───────────────────────────────┐
+     │ **function onEvalLive(msg)** │      │ **function renderMetrics(d)** │
+     │   receives the live metrics  │ ───▶ │   draws the live metrics rows │
+     └──────────────────────────────┘      └───────────────────────────────┘
+
+     ┌─────────────────────────────────┐      ┌───────────────────────────────┐
+     │ **function onEvalSummary(msg)** │      │ **function renderSummary(d)** │
+     │   receives the summary          │ ───▶ │   draws the pass/fail summary │
+     └─────────────────────────────────┘      └───────────────────────────────┘
+
 - **ZOOM tab** — press Crop, then drag a time range on the live plots to inspect it closely.
-  *In code:* ``enterCropMode`` (arms crop mode on the live plots) → ``updateSelectionRects``
-  (draws the drag selection box) → ``applyZoom`` (copies the selected time range into the zoom
-  plots).
+
+  .. code-block:: text
+
+     In code:
+
+     ┌────────────────────────────────────┐      ┌───────────────────────────────────────────────────┐      ┌──────────────────────────────────────┐
+     │ **function enterCropMode()**       │      │ **function updateSelectionRects(startPx, endPx)** │      │ **function applyZoom(t0Raw, t1Raw)** │
+     │   arms crop mode on the live plots │ ───▶ │   draws the drag selection box                    │ ───▶ │   copies the selected range          │
+     └────────────────────────────────────┘      └───────────────────────────────────────────────────┘      │   into the ZOOM plots                │
+                                                                                                            └──────────────────────────────────────┘
+
 - **CRITERIA tab** — shows the current pass/fail limits and lets you edit them live. An edit
   is sent as a ``criteria_update`` command.
-  *In code:* ``onCriteriaSnapshot`` (builds the criteria input rows) → an edit sends
-  ``criteria_update`` (the changed limit) → ``onCriteriaAck`` (handles the reply) →
-  ``flashCriteriaInput`` (flashes the field ok or failed).
+
+  .. code-block:: text
+
+     In code:
+
+     ┌──────────────────────────────────────┐      ┌─────────────────────────┐      ┌─────────────────────────────────┐      ┌────────────────────────────────────────────┐
+     │ **function onCriteriaSnapshot(msg)** │      │ edit a field            │      │ **function onCriteriaAck(msg)** │      │ **function flashCriteriaInput(input, ok)** │
+     │   builds the criteria input rows     │ ───▶ │   sends criteria_update │ ───▶ │   handles the reply             │ ───▶ │   flashes the field ok / fail              │
+     └──────────────────────────────────────┘      └─────────────────────────┘      └─────────────────────────────────┘      └────────────────────────────────────────────┘
+
 - **Header** — three buttons, each a click handler that sends one command:
 
   - **Time Sync** — ``btn-time-sync`` (sends the ``time_sync`` command; the reply sets
