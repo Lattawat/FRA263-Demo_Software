@@ -26,9 +26,9 @@ Python classes at build time:
      DEPENDENCIES builtin_interfaces std_msgs
    )
 
-These custom messages are directly referred by all of the ROS2 node and relatively referred 
-by the firmware in the ``/cluade-visaulizer-ws/encoder_data_publisher`` directory to help
-during the firmware building process. So a message built on the microcontroller can be understand 
+These custom messages are directly referenced by all of the ROS 2 nodes and referenced
+by the firmware in the ``/claude-visualizer-ws/encoder_data_publisher`` directory to help
+during the firmware building process. So a message built on the microcontroller can be understood
 by a Python node without anyone writing a converter.
 
 In code the types are referred to by package and kind, for example
@@ -81,9 +81,9 @@ Summary
 .. note::
   
   Every topic name above is written as a relative name (no leading slash). A relative
-  name is expanded with the namespace the specified during the launch process, so under the launch
-  namespace ``/G7/`` the topic ``encoder_raw`` becomes ``/G7/encoder_raw``. This is how we handle the 
-  concurrnt multi-machine running on one network without the topics colliding.
+  name is expanded with the namespace specified during the launch process, so under the launch
+  namespace ``/G7/`` the topic ``encoder_raw`` becomes ``/G7/encoder_raw``. This is how we handle the
+  concurrent multi-machine running on one network without the topics colliding.
 
 claude_visualizer_interface/EncoderRaw Message
 ----------------------------------------------
@@ -116,8 +116,8 @@ Compact Message Definition
 Where it is used
 ^^^^^^^^^^^^^^^^
 
-Published by the **Teensy 4.1 firmware** through micro-ROS when the system is run on hardware
-, and by ``mock_ui`` when the system is run without hardware. Subscribed by the **State Estimator 
+Published by the **Teensy 4.1 firmware** through micro-ROS when the system is run on hardware,
+and by ``mock_ui`` when the system is run without hardware. Subscribed by the **State Estimator
 node**.
 
 .. This is the entry point of the whole measurement chain. Everything downstream —
@@ -205,15 +205,15 @@ Published by the **State Estimator node**. Subscribed by the **Web Visualizer no
 
 Note:
 
-- The ``*_variance`` fields are the calculated variance of the Kalman Filter. You can confirm the 
-convergence of the filter by observing these values settle to small number while tuning the
-``Q`` and ``R`` values.
+- The ``*_variance`` fields are the calculated variance of the Kalman Filter. You can confirm the
+  convergence of the filter by observing these values settle to a small value while tuning the
+  ``Q`` and ``R`` values.
 
 .. note::
 
-   The ``position`` field does **not** is raw measured position, and only
-   ``velocity`` and ``acceleration`` come from the filter. The reason is explained on the
-   State Estimator page.
+   The ``position`` field is **not** the Kalman-estimated position; it is the raw measured
+   position, and only ``velocity`` and ``acceleration`` come from the filter. The reason is
+   explained on the State Estimator page.
 
 claude_visualizer_interface/ActualStates Message
 -------------------------------------------------
@@ -252,7 +252,7 @@ Where it is used
 This is the actual robot data sent over LSL by the Base System or ``mock_ui`` (if the system is run 
 without hardware), and turned into a ROS message by the **Web Visualizer node**. The Web Visualizer 
 then subscribes to the very same topic it publishes on, and forwards whatever arrives to the browser. 
-This data will be used for comapring the actual robot performance with the measured robot performance 
+This data will be used for comparing the actual robot performance with the measured robot performance
 (``/estimated_states``).
 
 Publishing and subscribing to one topic in the same node looks strange at first, but it is
@@ -294,13 +294,13 @@ Compact Message Definition
 Where it is used
 ^^^^^^^^^^^^^^^^
 
-This is the actual robot data sent over LSL by the Base System and ``mock_ui``, using the same 
-concept with the ``/actual_states`` data. It is subscribed by the **Experiment Evaluator
+This is the command/event signal sent over LSL by the Base System and ``mock_ui``, using the same
+bridging concept as the ``/actual_states`` data. It is subscribed by the **Experiment Evaluator
 node**, and by the Web Visualizer itself as a loopback so the browser sees every command.
 
-The Experiment Evaluator use this message to start the evaluation process. The data inside the 
-message is an event data, telling the Experiment Evaluation to know which evaluation logic
-and set of crieteria to be used in this session. The trade-off of this method is that
+The Experiment Evaluator uses this message to start the evaluation process. The data inside the
+message is event data, telling the Experiment Evaluator which evaluation logic
+and set of criteria to use for this session. The trade-off of this method is that
 the fields are no longer checked by the ROS type system, so the keys are documented in
 :ref:`event-payloads` below.
 
@@ -324,8 +324,7 @@ the fields are no longer checked by the ROS type system, so the keys are documen
    The comment in the ``.msg`` file says the JSON must contain an ``"event"`` key as the
    type discriminator. The system as built does not do this: every real payload uses
    ``mode`` and ``action`` as the discriminator pair instead, and the ``"event"`` key
-   appears only in the fallback described below. 
-  ..  Trust the payload tables, not the comment.
+   appears only in the fallback described below. Trust the payload tables, not the comment.
 
 claude_visualizer_interface/ExperimentEval Message
 ---------------------------------------------------
@@ -339,8 +338,7 @@ Raw Message Definition
 
    std_msgs/Header header
    string action    # experiment type: point_to_point | pick_place | performance | precision
-   string data      # JSON metrics (eval_live) or summary with pass/fail (eval_summary)  
-                    # the data are different across each experiement. It is possible because of JSON string format.
+   string data      # JSON metrics (eval_live) or summary with pass/fail (eval_summary)
 
 Compact Message Definition
 ^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -355,15 +353,15 @@ Where it is used
 ^^^^^^^^^^^^^^^^
 
 Published by the **Experiment Evaluator node** on two topics, and subscribed by the **Web
-Visualizer node**, which forwards both to the browser:
+Visualizer node**, which forwards both to the browser. The ``data`` field differs across
+each experiment, which is possible because it is carried as a JSON string:
 
 - ``eval_live`` — sent repeatedly while a run is in progress, throttled to 10 Hz. It updates
-  the live evaluation panel, so the lecturer can observe the crucial information of the evaluation without 
+  the live evaluation panel, so the lecturer can observe the key evaluation information without
   waiting for the run to end. The throttle exists because the states arrive at 100 Hz and
   no browser needs to redraw that often.
 - ``eval_summary`` — sent once, when the run finishes. This contains the summary information
-  of that particular experiment with the pass/fail judgement in each requirements.
-  .. This is the pass/fail verdict, andit is the reason the whole Verification System exists.
+  of that particular experiment with the pass/fail judgement for each requirement.
 
 .. Both topics carry the same message type, which is why ``action`` matters: it tells the
 .. receiver which of the four test types produced this message, and therefore how to read
@@ -376,19 +374,8 @@ claude_visualizer_interface/UpdateCriteria Service
 
 File: ``claude_visualizer_interface/srv/UpdateCriteria.srv``
 
-Raw Service Definition
-^^^^^^^^^^^^^^^^^^^^^^
-
-.. code-block:: text
-
-   string criteria_json
-   ---
-   bool success
-   string message
-   string current_criteria_json
-
-Compact Service Definition
-^^^^^^^^^^^^^^^^^^^^^^^^^^
+Service Definition
+^^^^^^^^^^^^^^^^^^
 
 .. code-block:: text
 
@@ -404,39 +391,36 @@ Where it is used
 The **Experiment Evaluator node** is the service **server** — the side that answers. The
 **Web Visualizer node** is the **client** — the side that asks, on behalf of the browser.
 
-A service is different from a topic. A topic is one-way and fire-and-forget: the publisher
-never learns whether anyone listened. A service is a request/response pair, so the caller
-gets an answer back and knows whether the work succeeded. Changing a pass/fail limit needs
-that confirmation, which is why it is a service and not a topic.
+.. A service is different from a topic. A topic is one-way and fire-and-forget: the publisher
+.. never learns whether anyone listened. A service is a request/response pair, so the caller
+.. gets an answer back and knows whether the work succeeded. Changing a pass/fail limit needs
+.. that confirmation, which is why it is a service and not a topic.
 
-The ``---`` line in the definition is the separator between the **request** part (above)
-and the **response** part (below). Everything above ``---`` is what the client sends;
-everything below is what the server sends back.
+.. The ``---`` line in the definition is the separator between the **request** part (above)
+.. and the **response** part (below). Everything above ``---`` is what the client sends;
+.. everything below is what the server sends back.
 
-How it behaves:
+Use cases:
 
-- Sending an empty object ``{}`` changes nothing and simply reads the current limits back.
-  The Web Visualizer does exactly this at startup to show the browser the current values.
-- Validation is **all-or-nothing**. The server checks every key in the request first — the
-  key must be a known criterion and the value must be a non-negative number. If any one
-  entry fails, *nothing* is applied and ``success`` is ``false``. This prevents a typo from
-  leaving the criteria half-updated, which would silently score the next run against a
-  mixture of old and new limits.
-- ``current_criteria_json`` always carries the **complete** criteria table, whether the
-  update succeeded or not. The browser therefore never has to guess what state the server
-  is in; it just displays what came back.
+- At startup, the Web Visualizer sends an empty object ``{}`` to the Experiment Evaluator
+  through an ``UpdateCriteria`` service call. On an empty object the Experiment Evaluator does not
+  change any criteria, but sends the current criteria back to the Web Visualizer to use for visualization.
+- When there is an update, the server checks every key in the request first — the key must be a 
+  known criterion and the value must be a non-negative number. If any one entry fails, *nothing* 
+  is applied and ``success`` is ``false``. This prevents a typo from leaving the criteria 
+  half-updated, which would score the next run against a mixture of old and new limits.
+- ``current_criteria_json`` always carries the full list of criteria.
 
 Without this service the limits could only be changed by editing ``criteria.yaml`` and
-restarting the node, which would interrupt a demonstration in progress.
+restarting the node.
 
 .. _event-payloads:
 
 JSON payloads
 -------------
 
-Two fields — ``EventTrigger.event`` and ``ExperimentEval.data`` — are declared as plain
-strings but actually carry JSON. The ROS type system cannot describe their contents, so
-this section documents them.
+This section provides the information about the JSON payload format of two fields,
+``EventTrigger.event`` and ``ExperimentEval.data``.
 
 EventTrigger commands
 ^^^^^^^^^^^^^^^^^^^^^
