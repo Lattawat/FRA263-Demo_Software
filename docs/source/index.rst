@@ -25,6 +25,7 @@ Contents
 --------
 
 .. toctree::
+   :maxdepth: 1
 
    usage
    system_overview

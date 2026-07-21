@@ -11,7 +11,8 @@ explained here.
 .. toctree::
    :maxdepth: 1
 
-   verification_system_custom_interface/verification_system_custom_interface.rst
+   .. verification_system_custom_interface/verification_system_custom_interface.rst
+   
    teensy_firmware.rst
    state_estimator_node.rst
    web_visualizer_node.rst
