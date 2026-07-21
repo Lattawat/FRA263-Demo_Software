@@ -12,7 +12,7 @@ WebSocket connection.
 
 .. code-block:: text
 
-                 ┌───────────────────────────────┐                     ┌──────────────────┐
+                 ┌────────────────────────────────┐                     ┌──────────────────┐
                  │  Browser                       │   HTTP GET          │  web_visualizer  │
                  │  index.html + app.js + style   │◀───(files +─────────│  node            │
                  │                                │     /config.json)   │                  │
@@ -20,7 +20,7 @@ WebSocket connection.
                  │                                │   WebSocket         │  WebSocket server│
                  │                                │◀───topics down──────│                  │
                  │                                │────commands up─────▶│                  │
-                 └───────────────────────────────┘                     └──────────────────┘
+                 └────────────────────────────────┘                     └──────────────────┘
 
 There are two channels. HTTP serves the three files and a small ``/config.json`` once, at
 load. The WebSocket then stays open for the whole session: the node pushes topics down to the
@@ -29,14 +29,13 @@ browser, and the browser sends commands back up.
 The three files
 ---------------
 
-- ``index.html`` — the page skeleton: the header controls, the left live panel, the right
-  ``PROFILE`` / ``ZOOM`` / ``CRITERIA`` tabs, and the footer. It also loads the **uPlot**
-  plotting library from a CDN, plus ``style.css`` and ``app.js``. Without it there are no
-  elements for the code to fill.
+- ``index.html`` — the page skeleton: the header controls, the left and right panel, the tabs, 
+    and the footer. It also loads the **uPlot** plotting library from a CDN, plus ``style.css`` 
+    and ``app.js``. Without it there are no elements for the code to fill.
 - ``app.js`` — all of the behaviour. It opens the WebSocket, receives the topics and draws
-  them, and sends the button commands back. It is the only file with logic.
+    them, and sends the button commands back. It is the only file with logic.
 - ``style.css`` — appearance and layout only: panels, tabs, plot sizing, colours. It has no
-  logic, and nothing in it talks to the back-end.
+    logic, and nothing in it talks to the back-end.
 
 Interfaces
 ----------
@@ -44,7 +43,9 @@ Interfaces
 The browser has no ROS topics of its own. Its interface is the WebSocket contract with the
 ``web_visualizer`` node — the messages it **receives** and the commands it **sends**.
 
-**Receives** (node → browser, routed by ``msg.topic``):
+**Receives** (Web Visualizer Node → browser, routed by ``msg.topic``):
+
+The browser (Web UI) receives the data for the visualization purpose as follows:
 
 - ``estimated_states`` — updates the live position, velocity and acceleration plots.
 - ``actual_states`` — the actual-robot line drawn against the estimated one.
@@ -55,7 +56,11 @@ The browser has no ROS topics of its own. Its interface is the WebSocket contrac
 - ``criteria_ack`` — the reply after an edit, confirming the new limits.
 - ``time_sync`` — the node's time reference, used to align the plot time axis.
 
-**Sends** (browser → node, in a ``command`` field):
+**Sends** (browser → Web Visualizer Node, in a ``command`` field):
+
+The browser (Web UI) interact with user action. So, after user interact with the interface components on
+the UI. The brower will tell the Web Visualizer Node that which button user press/action user did.
+Then, the Web Visualizer Node will be decided what to do next.
 
 - ``stop_experiment`` — the Stop button; ends the current run.
 - ``skip_iteration`` — skips the current waypoint or trial without ending the run.
@@ -65,37 +70,51 @@ The browser has no ROS topics of its own. Its interface is the WebSocket contrac
 - ``criteria_update`` — a changed pass/fail limit from the ``CRITERIA`` tab.
 
 The files and ``/config.json`` are served over HTTP; the WebSocket carries the messages
-above. The payload shape of each topic is on the custom-interface pages, and the node side of
-this contract is the HTTP-server and WebSocket-server workers on the Web Visualizer page.
+above. The payload shape of each topic is on the **custom-interface pages**, and the workers in the 
+Web Visualizer Node that work which the browser are the HTTP-server and WebSocket-server.
 
 UI Workflow
 -----------
 
 .. The flow chart of the connection lifecycle
 
-The page connects once at load, then runs two ongoing branches — messages coming in, and
-commands going out — until the connection closes, at which point it retries.
+The dashboard connects once at load, then the node streams data down while the browser sends
+commands up, until the socket closes and the page reconnects. The sequence below reads top to
+bottom as a conversation over time between the browser and the node's two servers.
 
 .. code-block:: text
 
-   load page
-       │
-       ▼
-   resolveWsUrl()  ──▶ fetch /config.json ──▶ WS_URL = ws://host:<ws_port>
-       │
-       ▼
-   connect()  ──▶ new WebSocket(WS_URL)
-       │
-       ├──────────────▶  message in  ──▶ switch(msg.topic) ──▶ update the matching panel
-       │
-       ├──────────────▶  button press ──▶ ws.send({command, data}) ──▶ node
-       │
-       └──────────────▶  on close ──▶ wait 1 s ──▶ connect()   (retry)
+   Browser (app.js)                 HTTP server            WebSocket server
+           │                            │                         │
+      ── 1. connect ──                  │                         │
+           │  GET files + /config.json  │                         │
+           │ ──────────────────────────▶│                         │
+           │  files + { ws_port }       │                         │
+           │◀────────────────────────── │                         │
+           │  new WebSocket(ws://host:ws_port)                    │
+           │ ════════════════════════════════════════════════════▶│
+           │                            │                         │
+      ── 2. snapshot + live ──          │                         │
+           │  last-known message per topic                        │
+           ◀══════════════════════════════════════════════════════│
+           │  estimated_states / eval_live / … (live)             │
+           ◀══════════════════════════════════════════════════════│
+           │                            │                         │
+      ── 3. command ──                  │                         │                 
+           │  { command } on button press                         │
+           │ ════════════════════════════════════════════════════▶│
+           │                            │                         │
+      ── 4. reconnect ──                │                         │
+           │  socket closes → wait 1 s → reconnect                │
+           │ ════════════════════════════════════════════════════▶│
+           │                            │                         │
 
 The port is fetched first because the node decides it at launch, so the browser cannot know it
-ahead of time. After that the WebSocket is opened once and left open. Every message that
-arrives is handed to the panel that needs it, every button builds one command and sends it,
-and if the socket ever drops the page reconnects on its own.
+ahead of time. After that the WebSocket is opened once and left open. On connect the WebSocket
+server first replays the last-known message on each topic, so a freshly opened tab shows the
+current state at once, then the live stream follows. Every message is handed to the panel that
+needs it, every button builds one command and sends it, and if the socket ever drops the page
+reconnects on its own. The server side of this is explained on the Web Visualizer node page.
 
 How the front-end connects to the back-end
 -------------------------------------------
@@ -202,20 +221,53 @@ the matching ROS action; the other five commands are listed in Interfaces above.
 Important UI functions
 ----------------------
 
-The parts of the dashboard and what each is for.
+The parts of the dashboard and what each is for. Every function named below lives in
+``app.js``; a ``→`` shows the order the functions run.
 
 - **Live panel** — rolling plots of position, velocity and acceleration, estimated against
   actual. It runs the whole time the page is open.
+  *In code:* ``pushLive`` (appends each estimated states sample to the rolling buffers) and
+  ``onActualStates`` (stores the latest actual states sample) → ``redraw`` (the 30 Hz draw loop
+  that repaints every plot).
 - **PROFILE tab** — opens when a test starts. It shows the run's own plots (estimated against
   target), the live metrics while it runs, and the pass/fail summary when it ends.
+  *In code:* ``onEventTrigger`` (reacts to an event trigger) → ``startExperiment`` (labels the
+  run, clears the eval panel) → ``startProfile`` (opens the tab, starts collecting the run's
+  data); ``onEvalLive`` (receives the live metrics) → ``renderMetrics`` (draws the live metrics
+  rows); ``onEvalSummary`` (receives the summary) → ``renderSummary`` (draws the pass/fail
+  summary).
 - **ZOOM tab** — press Crop, then drag a time range on the live plots to inspect it closely.
+  *In code:* ``enterCropMode`` (arms crop mode on the live plots) → ``updateSelectionRects``
+  (draws the drag selection box) → ``applyZoom`` (copies the selected time range into the zoom
+  plots).
 - **CRITERIA tab** — shows the current pass/fail limits and lets you edit them live. An edit
   is sent as a ``criteria_update`` command.
-- **Header** — Time Sync aligns the time axis with the node, Pos Sync lines the actual plot up
-  with the estimated one, and Zero sets the current position as zero.
-- **Toolbar and footer** — Auto follows the newest data, Stop ends the run, Save CSV exports
-  the current data, Skip Iteration skips one step, Clear empties the plots, Pause freezes them,
-  Crop starts a zoom selection, and the unit toggle switches between radians and degrees.
+  *In code:* ``onCriteriaSnapshot`` (builds the criteria input rows) → an edit sends
+  ``criteria_update`` (the changed limit) → ``onCriteriaAck`` (handles the reply) →
+  ``flashCriteriaInput`` (flashes the field ok or failed).
+- **Header** — three buttons, each a click handler that sends one command:
+
+  - **Time Sync** — ``btn-time-sync`` (sends the ``time_sync`` command; the reply sets
+    ``state.timeRef``, the plot time reference).
+  - **Pos Sync** — ``btn-pos-sync`` (sends the ``pos_sync`` command to line the actual plot up
+    with the estimated one).
+  - **Zero** — ``btn-zero`` (sends the ``zero_set`` command to set the current position as zero).
+
+- **Toolbar and footer** — the run and plot controls:
+
+  - **Auto** — ``btn-auto`` (toggles ``state.trackEvents`` — whether an event trigger opens a
+    profile).
+  - **Stop** — ``btn-stop`` (sends the ``stop_experiment`` command, else ``stopProfile`` when
+    offline).
+  - **Save CSV** — ``btn-save-csv`` → ``buildCSV`` (builds the CSV text) → ``saveCSV`` (writes
+    the file); ``updateSaveCsvBtn`` enables the button when there is data.
+  - **Skip Iteration** — ``btn-skip-iteration`` (sends the ``skip_iteration`` command);
+    ``updateSkipBtn`` shows it only for the multi-iteration tests.
+  - **Clear** — ``btn-clear`` (empties the data buffers) → ``redraw``.
+  - **Pause** — ``btn-pause`` (toggles ``state.paused``, which freezes the draw loop).
+  - **Crop** — ``btn-crop`` → ``enterCropMode`` / ``exitCropMode`` (arm / disarm crop mode).
+  - **Unit toggle** — ``btn-unit-live`` / ``btn-unit-profile`` → ``updatePosLabels`` (relabels
+    the position axis in radians or degrees).
 
 Notation
 --------
