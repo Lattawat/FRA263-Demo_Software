@@ -39,7 +39,7 @@ as published by the micro-ROS agent.
      - Value
      - Meaning
    * - ``EN_RES``
-     - ``8192``
+     - 8192
      - Encoder resolution in ticks per revolution. Used by ``ticks2rad`` to convert a tick
        count into radians. Matches ``ticks_per_rev`` on the State Estimator side.
    * - Encoder pins
@@ -49,19 +49,19 @@ as published by the micro-ROS agent.
      - 100 Hz
      - Set by a 10 ms timer. One ``EncoderRaw`` message goes out every tick of that timer.
    * - ``dt_us``
-     - ``10000``
+     - 10000
      - The sample interval reported in each message. It is **hard-coded** to 10000 µs
        (10 ms), not measured, so it always agrees with the 100 Hz timer.
    * - ``GROUP_NUMBER``
-     - ``1``
+     - N
      - Sets the node namespace ``/G<N>``. Must match the ``group_number`` the rest of the
        system is launched with, or the topics will not line up.
    * - Domain ID
-     - ``156``
+     - 156
      - The ROS 2 domain the node joins. Must equal ``ROS_DOMAIN_ID`` on the host PC —
        different domains cannot see each other.
    * - Transport
-     - serial @ 115200
+     - serial b 115200
      - USB serial to the agent, 115200 baud. Set in both the firmware and ``platformio.ini``.
 
 **Interfaces.** The firmware has one interface:
