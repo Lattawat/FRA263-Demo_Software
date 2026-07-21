@@ -6,10 +6,10 @@ Verification System Implementation
 The design detail and the code examination of each Node in the Verification System are
 explained here.
 
-Contents
---------
+**Contents**
 
 .. toctree::
+   :maxdepth: 1
 
    verification_system_custom_interface/verification_system_custom_interface.rst
    Teensy_firmware.rst
