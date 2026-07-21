@@ -12,7 +12,7 @@ explained here.
    :maxdepth: 1
 
    verification_system_custom_interface/verification_system_custom_interface.rst
-   Teensy_firmware.rst
+   teensy_firmware.rst
    state_estimator_node.rst
    web_visualizer_node.rst
    web_ui.rst
