@@ -86,7 +86,7 @@ Summary
   concurrent multi-machine running on one network without the topics colliding.
 
 .. toctree::
-  :maxdepth: 2
+  :maxdepth: 1
 
   EncoderRawMSG.rst
   EncoderStateMSG.rst
