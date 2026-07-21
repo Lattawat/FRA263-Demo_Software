@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.18.1: http://docutils.sourceforge.net/" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Custom Interface &mdash; FRA263 Software 0.1 documentation</title>
+      <link rel="stylesheet" href="../../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../../_static/css/theme.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script src="../../_static/jquery.js?v=5d32c60e"></script>
+        <script src="../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+        <script data-url_root="../../" id="documentation_options" src="../../_static/documentation_options.js?v=e031e9a9"></script>
+        <script src="../../_static/doctools.js?v=888ff710"></script>
+        <script src="../../_static/sphinx_highlight.js?v=4825356b"></script>
+    <script src="../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../index.html" class="icon icon-home">
+            FRA263 Software
+          </a>
+              <div class="version">
+                0.1.0
+              </div>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../system_overview.html">System Architecture &amp; Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../get_started.html">Getting Started</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../Base%20System.html">Base System</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../verification_system.html">Verification System Implementation</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../index.html">FRA263 Software</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Custom Interface</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../../_sources/verification_system/verification_system_custom_interface/verification_system_custom_interface.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="custom-interface">
+<h1>Custom Interface<a class="headerlink" href="#custom-interface" title="Permalink to this heading"></a></h1>
+<p>The Verification System does not use only the standard ROS 2 message types. It defines
+its own <strong>interface package</strong>, <code class="docutils literal notranslate"><span class="pre">claude_visualizer_interface</span></code>, which holds five message
+types and one service type.</p>
+<p>An interface package is a package that contains <strong>only</strong> definitions — no node code. It is
+built with <code class="docutils literal notranslate"><span class="pre">ament_cmake</span></code> and the <code class="docutils literal notranslate"><span class="pre">rosidl_generate_interfaces</span></code> macro, which reads every
+<code class="docutils literal notranslate"><span class="pre">.msg</span></code> and <code class="docutils literal notranslate"><span class="pre">.srv</span></code> file listed in <code class="docutils literal notranslate"><span class="pre">CMakeLists.txt</span></code> and generates the matching C++ and
+Python classes at build time:</p>
+<div class="highlight-cmake notranslate"><div class="highlight"><pre><span></span><span class="nb">rosidl_generate_interfaces</span><span class="p">(</span><span class="o">${</span><span class="nv">PROJECT_NAME</span><span class="o">}</span>
+<span class="w">  </span><span class="s2">&quot;msg/EncoderRaw.msg&quot;</span>
+<span class="w">  </span><span class="s2">&quot;msg/EncoderState.msg&quot;</span>
+<span class="w">  </span><span class="s2">&quot;msg/EventTrigger.msg&quot;</span>
+<span class="w">  </span><span class="s2">&quot;msg/ActualStates.msg&quot;</span>
+<span class="w">  </span><span class="s2">&quot;msg/ExperimentEval.msg&quot;</span>
+<span class="w">  </span><span class="s2">&quot;srv/UpdateCriteria.srv&quot;</span>
+
+<span class="w">  </span><span class="s">DEPENDENCIES</span><span class="w"> </span><span class="s">builtin_interfaces</span><span class="w"> </span><span class="s">std_msgs</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+<p>These custom messages are directly referenced by all of the ROS 2 nodes and referenced
+by the firmware in the <code class="docutils literal notranslate"><span class="pre">/claude-visualizer-ws/encoder_data_publisher</span></code> directory to help
+during the firmware building process. So a message built on the microcontroller can be understood
+by a Python node without anyone writing a converter.</p>
+<p>In code the types are referred to by package and kind, for example
+<code class="docutils literal notranslate"><span class="pre">claude_visualizer_interface/msg/EncoderRaw</span></code> or
+<code class="docutils literal notranslate"><span class="pre">claude_visualizer_interface/srv/UpdateCriteria</span></code>.</p>
+<section id="summary">
+<h2>Summary<a class="headerlink" href="#summary" title="Permalink to this heading"></a></h2>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 18%" />
+<col style="width: 8%" />
+<col style="width: 20%" />
+<col style="width: 22%" />
+<col style="width: 32%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Interface</p></th>
+<th class="head"><p>Kind</p></th>
+<th class="head"><p>Topic / service</p></th>
+<th class="head"><p>Published by</p></th>
+<th class="head"><p>Purpose</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">EncoderRaw</span></code></p></td>
+<td><p>msg</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">encoder_raw</span></code></p></td>
+<td><p>Teensy firmware, <code class="docutils literal notranslate"><span class="pre">mock_ui</span></code></p></td>
+<td><p>Raw encoder ticks straight from the hardware.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">EncoderState</span></code></p></td>
+<td><p>msg</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">estimated_states</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">encoder_reader</span></code></p></td>
+<td><p>Raw unit converted position and Kalman-filtered velocity and acceleration.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">ActualStates</span></code></p></td>
+<td><p>msg</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">actual_states</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">web_visualizer</span></code>, <code class="docutils literal notranslate"><span class="pre">mock_ui</span></code></p></td>
+<td><p>The actual states of the robot.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">EventTrigger</span></code></p></td>
+<td><p>msg</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">event_trigger</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">web_visualizer</span></code>, <code class="docutils literal notranslate"><span class="pre">mock_ui</span></code></p></td>
+<td><p>The command that starts, stops or skips a test.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">ExperimentEval</span></code></p></td>
+<td><p>msg</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">eval_live</span></code>, <code class="docutils literal notranslate"><span class="pre">eval_summary</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">experiment_evaluator</span></code></p></td>
+<td><p>Live metrics during a run, and the final pass/fail verdict.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">UpdateCriteria</span></code></p></td>
+<td><p>srv</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">update_criteria</span></code></p></td>
+<td><p>server: <code class="docutils literal notranslate"><span class="pre">experiment_evaluator</span></code></p></td>
+<td><p>Read and change the pass/fail criteria while the system is running.</p></td>
+</tr>
+</tbody>
+</table>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Every topic name above is written as a relative name (no leading slash). A relative
+name is expanded with the namespace specified during the launch process, so under the launch
+namespace <code class="docutils literal notranslate"><span class="pre">/G7/</span></code> the topic <code class="docutils literal notranslate"><span class="pre">encoder_raw</span></code> becomes <code class="docutils literal notranslate"><span class="pre">/G7/encoder_raw</span></code>. This is how we handle the
+concurrent multi-machine running on one network without the topics colliding.</p>
+</div>
+<div class="toctree-wrapper compound">
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="EncoderRawMSG.html">claude_visualizer_interface/EncoderRaw Message</a></li>
+<li class="toctree-l1"><a class="reference internal" href="EncoderStateMSG.html">claude_visualizer_interface/EncoderState Message</a></li>
+<li class="toctree-l1"><a class="reference internal" href="ActualStatesMSG.html">claude_visualizer_interface/ActualStates Message</a></li>
+<li class="toctree-l1"><a class="reference internal" href="EventTriggerMSG.html">claude_visualizer_interface/EventTrigger Message</a></li>
+<li class="toctree-l1"><a class="reference internal" href="ExperimentEvalMSG.html">claude_visualizer_interface/ExperimentEval Message</a></li>
+<li class="toctree-l1"><a class="reference internal" href="UpdateCriteriaSRV.html">claude_visualizer_interface/UpdateCriteria Service</a></li>
+<li class="toctree-l1"><a class="reference internal" href="JSONpayloads.html">JSON payloads</a></li>
+</ul>
+</div>
+</section>
+<section id="notation">
+<h2>Notation<a class="headerlink" href="#notation" title="Permalink to this heading"></a></h2>
+<p>Words used on this page.</p>
+<dl class="simple">
+<dt>interface package</dt><dd><p>A ROS 2 package that contains only message and service definitions, no runnable code.
+Other packages depend on it to share one common data layout.</p>
+</dd>
+<dt>rosidl</dt><dd><p>The ROS 2 code generator. It reads <code class="docutils literal notranslate"><span class="pre">.msg</span></code> and <code class="docutils literal notranslate"><span class="pre">.srv</span></code> files and writes the C++ and
+Python classes that nodes actually use, so the definition is written once.</p>
+</dd>
+<dt>field</dt><dd><p>One named entry inside a message — a type and a name, such as <code class="docutils literal notranslate"><span class="pre">float64</span> <span class="pre">velocity</span></code>.</p>
+</dd>
+<dt>message vs service</dt><dd><p>A <strong>message</strong> travels one way on a topic, and the sender never learns who received it.
+A <strong>service</strong> is a request/response pair: the caller waits and gets an answer back.</p>
+</dd>
+<dt>request / response</dt><dd><p>The two halves of a service definition, separated by the <code class="docutils literal notranslate"><span class="pre">---</span></code> line. Above it is what
+the client sends, below it is what the server sends back.</p>
+</dd>
+<dt>payload</dt><dd><p>The actual content carried inside a field — here, the JSON object packed into a
+<code class="docutils literal notranslate"><span class="pre">string</span></code>.</p>
+</dd>
+<dt>type discriminator</dt><dd><p>The key (or keys) a receiver reads first to work out what kind of payload it is holding,
+so it knows how to read the rest. In this system it is the <code class="docutils literal notranslate"><span class="pre">mode</span></code> + <code class="docutils literal notranslate"><span class="pre">action</span></code> pair.</p>
+</dd>
+<dt>loopback</dt><dd><p>When a node subscribes to a topic it also publishes on. It is done on purpose here, so
+that messages from <em>any</em> producer — not only the node’s own bridge — still reach the
+browser.</p>
+</dd>
+<dt>relative vs absolute topic name</dt><dd><p>An <strong>absolute</strong> name starts with a slash (<code class="docutils literal notranslate"><span class="pre">/encoder_raw</span></code>) and is used exactly as
+written. A <strong>relative</strong> name has no leading slash (<code class="docutils literal notranslate"><span class="pre">encoder_raw</span></code>) and gets the node’s
+namespace added in front, becoming <code class="docutils literal notranslate"><span class="pre">/G7/encoder_raw</span></code> under the namespace <code class="docutils literal notranslate"><span class="pre">/G7/</span></code>.
+This system uses relative names everywhere so that several groups can run at once.</p>
+</dd>
+<dt>variance</dt><dd><p>The filter’s own measure of how uncertain it is about a state. A small variance means
+the estimate has converged; it is useful while tuning, but nothing in the system makes
+a decision from it.</p>
+</dd>
+</dl>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2026, Institute of Field Robotics.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.18.1: http://docutils.sourceforge.net/" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>claude_visualizer_interface/EventTrigger Message &mdash; FRA263 Software 0.1 documentation</title>
+      <link rel="stylesheet" href="../../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../../_static/css/theme.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script src="../../_static/jquery.js?v=5d32c60e"></script>
+        <script src="../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+        <script data-url_root="../../" id="documentation_options" src="../../_static/documentation_options.js?v=e031e9a9"></script>
+        <script src="../../_static/doctools.js?v=888ff710"></script>
+        <script src="../../_static/sphinx_highlight.js?v=4825356b"></script>
+    <script src="../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../index.html" class="icon icon-home">
+            FRA263 Software
+          </a>
+              <div class="version">
+                0.1.0
+              </div>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../system_overview.html">System Architecture &amp; Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../get_started.html">Getting Started</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../Base%20System.html">Base System</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../verification_system.html">Verification System Implementation</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../index.html">FRA263 Software</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">claude_visualizer_interface/EventTrigger Message</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../../_sources/verification_system/verification_system_custom_interface/EventTriggerMSG.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="claude-visualizer-interface-eventtrigger-message">
+<h1>claude_visualizer_interface/EventTrigger Message<a class="headerlink" href="#claude-visualizer-interface-eventtrigger-message" title="Permalink to this heading"></a></h1>
+<p>File: <code class="docutils literal notranslate"><span class="pre">claude_visualizer_interface/msg/EventTrigger.msg</span></code></p>
+<section id="raw-message-definition">
+<h2>Raw Message Definition<a class="headerlink" href="#raw-message-definition" title="Permalink to this heading"></a></h2>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span># Trigger signal from robot_controller.py via LSL marker stream,
+# bridged into ROS 2 by web_visualizer node.
+
+std_msgs/Header header          # timestamp assigned by the bridge on receipt
+string  event                   # Full JSON payload string. Must contain an &quot;event&quot; key
+                                # (the type discriminator). All other keys are event-specific.
+</pre></div>
+</div>
+</section>
+<section id="compact-message-definition">
+<h2>Compact Message Definition<a class="headerlink" href="#compact-message-definition" title="Permalink to this heading"></a></h2>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>std_msgs/Header header
+string event
+</pre></div>
+</div>
+</section>
+<section id="where-it-is-used">
+<h2>Where it is used<a class="headerlink" href="#where-it-is-used" title="Permalink to this heading"></a></h2>
+<p>This is the command/event signal sent over LSL by the Base System and <code class="docutils literal notranslate"><span class="pre">mock_ui</span></code>, using the same
+bridging concept as the <code class="docutils literal notranslate"><span class="pre">/actual_states</span></code> data. It is subscribed by the <strong>Experiment Evaluator
+node</strong>, and by the Web Visualizer itself as a loopback so the browser sees every command.</p>
+<p>The Experiment Evaluator uses this message to start the evaluation process. The data inside the
+message is event data, telling the Experiment Evaluator which evaluation logic
+and set of criteria to use for this session. The trade-off of this method is that
+the fields are no longer checked by the ROS type system, so the keys are documented in
+<a class="reference internal" href="JSONpayloads.html#event-payloads"><span class="std std-ref">JSON payloads</span></a> below.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>The comment in the <code class="docutils literal notranslate"><span class="pre">.msg</span></code> file says the JSON must contain an <code class="docutils literal notranslate"><span class="pre">&quot;event&quot;</span></code> key as the
+type discriminator. The system as built does not do this: every real payload uses
+<code class="docutils literal notranslate"><span class="pre">mode</span></code> and <code class="docutils literal notranslate"><span class="pre">action</span></code> as the discriminator pair instead, and the <code class="docutils literal notranslate"><span class="pre">&quot;event&quot;</span></code> key
+appears only in the fallback described below. Trust the payload tables, not the comment.</p>
+</div>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2026, Institute of Field Robotics.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

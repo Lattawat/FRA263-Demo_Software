@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.18.1: http://docutils.sourceforge.net/" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>claude_visualizer_interface/UpdateCriteria Service &mdash; FRA263 Software 0.1 documentation</title>
+      <link rel="stylesheet" href="../../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../../_static/css/theme.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script src="../../_static/jquery.js?v=5d32c60e"></script>
+        <script src="../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+        <script data-url_root="../../" id="documentation_options" src="../../_static/documentation_options.js?v=e031e9a9"></script>
+        <script src="../../_static/doctools.js?v=888ff710"></script>
+        <script src="../../_static/sphinx_highlight.js?v=4825356b"></script>
+    <script src="../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../index.html" class="icon icon-home">
+            FRA263 Software
+          </a>
+              <div class="version">
+                0.1.0
+              </div>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../system_overview.html">System Architecture &amp; Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../get_started.html">Getting Started</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../Base%20System.html">Base System</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../verification_system.html">Verification System Implementation</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../index.html">FRA263 Software</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">claude_visualizer_interface/UpdateCriteria Service</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../../_sources/verification_system/verification_system_custom_interface/UpdateCriteriaSRV.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="claude-visualizer-interface-updatecriteria-service">
+<h1>claude_visualizer_interface/UpdateCriteria Service<a class="headerlink" href="#claude-visualizer-interface-updatecriteria-service" title="Permalink to this heading"></a></h1>
+<p>File: <code class="docutils literal notranslate"><span class="pre">claude_visualizer_interface/srv/UpdateCriteria.srv</span></code></p>
+<section id="service-definition">
+<h2>Service Definition<a class="headerlink" href="#service-definition" title="Permalink to this heading"></a></h2>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>string criteria_json
+---
+bool success
+string message
+string current_criteria_json
+</pre></div>
+</div>
+</section>
+<section id="where-it-is-used">
+<h2>Where it is used<a class="headerlink" href="#where-it-is-used" title="Permalink to this heading"></a></h2>
+<p>The <strong>Experiment Evaluator node</strong> is the service <strong>server</strong> — the side that answers. The
+<strong>Web Visualizer node</strong> is the <strong>client</strong> — the side that asks, on behalf of the browser.</p>
+<p>Use cases:</p>
+<ul class="simple">
+<li><p>At startup, the Web Visualizer sends an empty object <code class="docutils literal notranslate"><span class="pre">{}</span></code> to the Experiment Evaluator
+through an <code class="docutils literal notranslate"><span class="pre">UpdateCriteria</span></code> service call. On an empty object the Experiment Evaluator does not
+change any criteria, but sends the current criteria back to the Web Visualizer to use for visualization.</p></li>
+<li><p>When there is an update, the server checks every key in the request first — the key must be a
+known criterion and the value must be a non-negative number. If any one entry fails, <em>nothing</em>
+is applied and <code class="docutils literal notranslate"><span class="pre">success</span></code> is <code class="docutils literal notranslate"><span class="pre">false</span></code>. This prevents a typo from leaving the criteria
+half-updated, which would score the next run against a mixture of old and new limits.</p></li>
+<li><p>On a successful service call <code class="docutils literal notranslate"><span class="pre">current_criteria_json</span></code> always carries the full list of criteria.
+However, on a failed call, this field is empty, and the browser keeps whoeing what it already had.</p></li>
+</ul>
+<p>Without this service the limits could only be changed by editing <code class="docutils literal notranslate"><span class="pre">criteria.yaml</span></code> and
+restarting the node.</p>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2026, Institute of Field Robotics.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.18.1: http://docutils.sourceforge.net/" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>claude_visualizer_interface/EncoderState Message &mdash; FRA263 Software 0.1 documentation</title>
+      <link rel="stylesheet" href="../../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../../_static/css/theme.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script src="../../_static/jquery.js?v=5d32c60e"></script>
+        <script src="../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+        <script data-url_root="../../" id="documentation_options" src="../../_static/documentation_options.js?v=e031e9a9"></script>
+        <script src="../../_static/doctools.js?v=888ff710"></script>
+        <script src="../../_static/sphinx_highlight.js?v=4825356b"></script>
+    <script src="../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../index.html" class="icon icon-home">
+            FRA263 Software
+          </a>
+              <div class="version">
+                0.1.0
+              </div>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../system_overview.html">System Architecture &amp; Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../get_started.html">Getting Started</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../Base%20System.html">Base System</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../verification_system.html">Verification System Implementation</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../index.html">FRA263 Software</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">claude_visualizer_interface/EncoderState Message</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../../_sources/verification_system/verification_system_custom_interface/EncoderStateMSG.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="claude-visualizer-interface-encoderstate-message">
+<h1>claude_visualizer_interface/EncoderState Message<a class="headerlink" href="#claude-visualizer-interface-encoderstate-message" title="Permalink to this heading"></a></h1>
+<p>File: <code class="docutils literal notranslate"><span class="pre">claude_visualizer_interface/msg/EncoderState.msg</span></code></p>
+<section id="raw-message-definition">
+<h2>Raw Message Definition<a class="headerlink" href="#raw-message-definition" title="Permalink to this heading"></a></h2>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span># Kalman-filtered kinematic estimates published by encoder_reader node.
+# Consumers: web_visualizer node, robot_controller.py (via LSL re-pub).
+
+std_msgs/Header header          # ROS 2 standard header (timestamp + frame_id)
+
+float64 position                # estimated position  [rad or m depending on setup]
+float64 velocity                # estimated velocity  [rad/s or m/s]
+float64 acceleration            # estimated acceleration [rad/s² or m/s²]
+
+# Kalman filter diagnostics (optional but useful during tuning)
+float64 pos_variance            # posterior variance — position
+float64 vel_variance            # posterior variance — velocity
+float64 acc_variance            # posterior variance — acceleration
+
+# Raw tick count passed through for logging / sanity checks
+int32   raw_ticks
+</pre></div>
+</div>
+</section>
+<section id="compact-message-definition">
+<h2>Compact Message Definition<a class="headerlink" href="#compact-message-definition" title="Permalink to this heading"></a></h2>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>std_msgs/Header header
+float64 position
+float64 velocity
+float64 acceleration
+float64 pos_variance
+float64 vel_variance
+float64 acc_variance
+int32 raw_ticks
+</pre></div>
+</div>
+</section>
+<section id="where-it-is-used">
+<h2>Where it is used<a class="headerlink" href="#where-it-is-used" title="Permalink to this heading"></a></h2>
+<p>Published by the <strong>State Estimator node</strong>. Subscribed by the <strong>Web Visualizer node</strong>
+(which forwards it to the browser and pushes it to the Base System through an LSL outlet) and by the
+<strong>Experiment Evaluator node</strong>.</p>
+<p>Note:</p>
+<ul class="simple">
+<li><p>The <code class="docutils literal notranslate"><span class="pre">*_variance</span></code> fields are the calculated variance of the Kalman Filter. You can confirm the
+convergence of the filter by observing these values settle to a small value while tuning the
+<code class="docutils literal notranslate"><span class="pre">Q</span></code> and <code class="docutils literal notranslate"><span class="pre">R</span></code> values.</p></li>
+</ul>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>The <code class="docutils literal notranslate"><span class="pre">position</span></code> field is <strong>not</strong> the Kalman-estimated position; it is the raw measured
+position, and only <code class="docutils literal notranslate"><span class="pre">velocity</span></code> and <code class="docutils literal notranslate"><span class="pre">acceleration</span></code> come from the filter. The reason is
+explained on the State Estimator page.</p>
+</div>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2026, Institute of Field Robotics.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.18.1: http://docutils.sourceforge.net/" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>JSON payloads &mdash; FRA263 Software 0.1 documentation</title>
+      <link rel="stylesheet" href="../../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../../_static/css/theme.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script src="../../_static/jquery.js?v=5d32c60e"></script>
+        <script src="../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+        <script data-url_root="../../" id="documentation_options" src="../../_static/documentation_options.js?v=e031e9a9"></script>
+        <script src="../../_static/doctools.js?v=888ff710"></script>
+        <script src="../../_static/sphinx_highlight.js?v=4825356b"></script>
+    <script src="../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../index.html" class="icon icon-home">
+            FRA263 Software
+          </a>
+              <div class="version">
+                0.1.0
+              </div>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../system_overview.html">System Architecture &amp; Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../get_started.html">Getting Started</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../Base%20System.html">Base System</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../verification_system.html">Verification System Implementation</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../index.html">FRA263 Software</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">JSON payloads</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../../_sources/verification_system/verification_system_custom_interface/JSONpayloads.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="json-payloads">
+<span id="event-payloads"></span><h1>JSON payloads<a class="headerlink" href="#json-payloads" title="Permalink to this heading"></a></h1>
+<p>This section provides the information about the JSON payload format of two fields,
+<code class="docutils literal notranslate"><span class="pre">EventTrigger.event</span></code> and <code class="docutils literal notranslate"><span class="pre">ExperimentEval.data</span></code>.</p>
+<section id="eventtrigger-commands">
+<h2>EventTrigger commands<a class="headerlink" href="#eventtrigger-commands" title="Permalink to this heading"></a></h2>
+<p>Every payload is a flat JSON object. Two keys are always present and act as the
+<strong>type discriminator</strong> — the pair of values that tells the receiver what kind of message
+this is:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">mode</span></code> — which screen the operator was on: <code class="docutils literal notranslate"><span class="pre">Manual</span></code>, <code class="docutils literal notranslate"><span class="pre">Auto</span></code>, <code class="docutils literal notranslate"><span class="pre">Test</span></code> or <code class="docutils literal notranslate"><span class="pre">STOP</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">action</span></code> — the specific command</p></li>
+</ul>
+<p>The Experiment Evaluator reads exactly these two keys to decide what to do, and ignores any
+payload whose <code class="docutils literal notranslate"><span class="pre">action</span></code> it does not recognise.</p>
+<p>Five of the seven commands are built by the Base System backend (<code class="docutils literal notranslate"><span class="pre">server_111.py</span></code>) and
+travel to the Verification System over LSL. The remaining two, <strong>stop</strong> and
+<strong>skip_iteration</strong>, are built by the Web Visualizer when a button is pressed in the browser
+and are published straight onto <code class="docutils literal notranslate"><span class="pre">event_trigger</span></code> — they never make the LSL round trip.</p>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 12%" />
+<col style="width: 20%" />
+<col style="width: 40%" />
+<col style="width: 28%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p><code class="docutils literal notranslate"><span class="pre">mode</span></code></p></th>
+<th class="head"><p><code class="docutils literal notranslate"><span class="pre">action</span></code></p></th>
+<th class="head"><p>Extra keys</p></th>
+<th class="head"><p>Origin</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">Manual</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">jog</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">value</span></code>, <code class="docutils literal notranslate"><span class="pre">direction</span></code>, <code class="docutils literal notranslate"><span class="pre">timestamp</span></code></p></td>
+<td><p>Base System backend</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">Auto</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">point_to_point</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">unit</span></code>, <code class="docutils literal notranslate"><span class="pre">value</span></code>, <code class="docutils literal notranslate"><span class="pre">timestamp</span></code></p></td>
+<td><p>Base System backend</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">Auto</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">pick_place</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">order_sequence</span></code>, <code class="docutils literal notranslate"><span class="pre">direction_sequence</span></code>, <code class="docutils literal notranslate"><span class="pre">use_gripper</span></code>, <code class="docutils literal notranslate"><span class="pre">num</span></code>, <code class="docutils literal notranslate"><span class="pre">timestamp</span></code></p></td>
+<td><p>Base System backend</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">Test</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">performance</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">speed</span></code>, <code class="docutils literal notranslate"><span class="pre">accel</span></code>, <code class="docutils literal notranslate"><span class="pre">timestamp</span></code></p></td>
+<td><p>Base System backend</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">Test</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">precision</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">init_pos</span></code>, <code class="docutils literal notranslate"><span class="pre">target_pos</span></code>, <code class="docutils literal notranslate"><span class="pre">repeat</span></code>, <code class="docutils literal notranslate"><span class="pre">unit</span></code>, <code class="docutils literal notranslate"><span class="pre">timestamp</span></code></p></td>
+<td><p>Base System backend</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">STOP</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">stop</span></code></p></td>
+<td><p>—</p></td>
+<td><p>Browser button</p></td>
+</tr>
+<tr class="row-even"><td><p><em>(none)</em></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">skip_iteration</span></code></p></td>
+<td><p>—</p></td>
+<td><p>Browser button</p></td>
+</tr>
+</tbody>
+</table>
+<p>Several commands carry a <code class="docutils literal notranslate"><span class="pre">unit</span></code> key. It tells the evaluator how to convert the numbers
+into radians before doing any maths:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">&quot;index&quot;</span></code> — a hole number on the 72-hole plate, so one index is 360/72 = 5°
+(≈ 0.08727 rad)</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">&quot;degree&quot;</span></code> — degrees</p></li>
+<li><p>anything else — the value is assumed to be radians already</p></li>
+</ul>
+<p><strong>Manual — jog.</strong> A hand-driven nudge of the shaft. The evaluator does not score this
+command; it is broadcast so the browser can show what the operator did.</p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;mode&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Manual&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;action&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;jog&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;value&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">5</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;direction&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;CCW&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;timestamp&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">1753003812.4471</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p><strong>Auto — point_to_point.</strong> Start a point-to-point test: move <code class="docutils literal notranslate"><span class="pre">value</span></code> away from wherever
+the shaft is standing now.</p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;mode&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Auto&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;action&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;point_to_point&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;unit&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;degree&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;value&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">90</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;timestamp&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">1753003845.1902</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p><strong>Auto — pick_place.</strong> Start a pick-and-place test. <code class="docutils literal notranslate"><span class="pre">order_sequence</span></code> is the list of hole
+indices to visit in order, and <code class="docutils literal notranslate"><span class="pre">num</span></code> is the number of pick/place pairs. <code class="docutils literal notranslate"><span class="pre">use_gripper</span></code>
+tells the robot whether to actually operate the gripper at each hole.</p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;mode&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Auto&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;action&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;pick_place&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;order_sequence&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="mi">18</span><span class="p">,</span><span class="w"> </span><span class="mi">36</span><span class="p">,</span><span class="w"> </span><span class="mi">54</span><span class="p">],</span>
+<span class="w">  </span><span class="nt">&quot;direction_sequence&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;CCW&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;CCW&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;CW&quot;</span><span class="p">],</span>
+<span class="w">  </span><span class="nt">&quot;use_gripper&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;num&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">2</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;timestamp&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">1753003901.7734</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p><code class="docutils literal notranslate"><span class="pre">mock_ui</span></code> sends this same list under the key <code class="docutils literal notranslate"><span class="pre">directions</span></code>, while the Base System
+backend sends it as <code class="docutils literal notranslate"><span class="pre">direction_sequence</span></code>. Nothing breaks today because no consumer
+reads either key — the evaluator only uses <code class="docutils literal notranslate"><span class="pre">order_sequence</span></code> — but a future consumer
+written against one spelling would silently miss the other. <strong>The backend spelling,
+``direction_sequence``, is the authoritative one.</strong></p>
+</div>
+<p><strong>Test — performance.</strong> Start a performance test. The two values are the speed and
+acceleration the robot was <em>commanded</em> to reach; the evaluator passes the run only if the
+measured peaks reach them. If either key is missing, the evaluator falls back to the
+<code class="docutils literal notranslate"><span class="pre">min_speed</span></code> and <code class="docutils literal notranslate"><span class="pre">min_acceleration</span></code> limits from the criteria file.</p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;mode&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Test&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;action&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;performance&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;speed&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">3.0</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;accel&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">4.0</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;timestamp&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">1753003950.0128</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p><strong>Test — precision.</strong> Start a precision test: drive from <code class="docutils literal notranslate"><span class="pre">init_pos</span></code> to <code class="docutils literal notranslate"><span class="pre">target_pos</span></code> and
+back again, <code class="docutils literal notranslate"><span class="pre">repeat</span></code> times, so the spread of the stopping positions can be measured.</p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;mode&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Test&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;action&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;precision&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;init_pos&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;target_pos&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">18</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;repeat&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">10</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;unit&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;index&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;timestamp&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">1753004010.6650</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p><strong>Stop.</strong> Ends whatever run is active and forces the evaluator to publish its summary
+immediately. The evaluator accepts either <code class="docutils literal notranslate"><span class="pre">&quot;mode&quot;:</span> <span class="pre">&quot;STOP&quot;</span></code> or <code class="docutils literal notranslate"><span class="pre">&quot;action&quot;:</span> <span class="pre">&quot;stop&quot;</span></code>, so
+both spellings work.</p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;mode&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;STOP&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;action&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;stop&quot;</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p><strong>Skip iteration.</strong> Abandons the current waypoint or trial and moves on to the next one,
+without ending the run. This exists for the case where the robot gets stuck and would
+otherwise block the whole test.</p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;action&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;skip_iteration&quot;</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p><strong>Fallback for non-JSON samples.</strong> If a sample arrives on the LSL marker stream that is not
+valid JSON, the Web Visualizer does not throw it away. It wraps the raw text instead, so a
+plain text marker still reaches the system as a well-formed payload:</p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;event&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;LABEL&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;label&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;the raw text that arrived&quot;</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p>The evaluator ignores this one, because <code class="docutils literal notranslate"><span class="pre">action</span></code> is missing.</p>
+</section>
+<section id="experimenteval-metrics">
+<h2>ExperimentEval metrics<a class="headerlink" href="#experimenteval-metrics" title="Permalink to this heading"></a></h2>
+<p>The <code class="docutils literal notranslate"><span class="pre">data</span></code> field holds eight different shapes: one <strong>live</strong> shape and one <strong>summary</strong>
+shape for each of the four test types. Which shape it is depends on the topic
+(<code class="docutils literal notranslate"><span class="pre">eval_live</span></code> or <code class="docutils literal notranslate"><span class="pre">eval_summary</span></code>) and on the <code class="docutils literal notranslate"><span class="pre">action</span></code> field.</p>
+<p>A live payload reports progress. This one is from a point-to-point run:</p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;target_rad&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">1.5708</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;current_pos_rad&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">1.4912</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;current_error_rad&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.0796</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;elapsed_s&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.842</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p>A summary payload reports the verdict, and always contains one or more <code class="docutils literal notranslate"><span class="pre">pass_*</span></code> boolean
+fields. This is the matching point-to-point summary:</p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;target_rad&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">1.5708</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;final_error_rad&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.0041</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;overshoot_pct&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">6.213</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;settling_time_s&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">1.284</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;pass_final_error&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;pass_overshoot&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;pass_settling&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p>The remaining six shapes are listed field by field, together with the algorithm that fills
+them in, on the Experiment Evaluator page. They are not repeated here.</p>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2026, Institute of Field Robotics.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

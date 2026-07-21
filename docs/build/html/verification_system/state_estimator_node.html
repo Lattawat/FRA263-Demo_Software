@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.18.1: http://docutils.sourceforge.net/" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>State Estimator Node &mdash; FRA263 Software 0.1 documentation</title>
+      <link rel="stylesheet" href="../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../_static/css/theme.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script src="../_static/jquery.js?v=5d32c60e"></script>
+        <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+        <script data-url_root="../" id="documentation_options" src="../_static/documentation_options.js?v=e031e9a9"></script>
+        <script src="../_static/doctools.js?v=888ff710"></script>
+        <script src="../_static/sphinx_highlight.js?v=4825356b"></script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../index.html" class="icon icon-home">
+            FRA263 Software
+          </a>
+              <div class="version">
+                0.1.0
+              </div>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+<li class="toctree-l1"><a class="reference internal" href="../system_overview.html">System Architecture &amp; Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../get_started.html">Getting Started</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Base%20System.html">Base System</a></li>
+<li class="toctree-l1"><a class="reference internal" href="verification_system.html">Verification System Implementation</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">FRA263 Software</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">State Estimator Node</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/verification_system/state_estimator_node.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="state-estimator-node">
+<h1>State Estimator Node<a class="headerlink" href="#state-estimator-node" title="Permalink to this heading"></a></h1>
+<p>This node use a <strong>Kalman Filter</strong> to estimate the velocity and acceleration
+of the position data from <code class="docutils literal notranslate"><span class="pre">\encoder_raw</span> <span class="pre">``</span> <span class="pre">ROS2</span> <span class="pre">topic</span> <span class="pre">which</span> <span class="pre">is</span> <span class="pre">a</span> <span class="pre">tick</span> <span class="pre">information.</span>
+<span class="pre">So,</span> <span class="pre">we</span> <span class="pre">need</span> <span class="pre">to</span> <span class="pre">convert</span> <span class="pre">the</span> <span class="pre">data</span> <span class="pre">to</span> <span class="pre">radian</span> <span class="pre">before</span> <span class="pre">using</span> <span class="pre">in</span> <span class="pre">the</span> <span class="pre">calculation</span> <span class="pre">process.</span>
+<span class="pre">This</span> <span class="pre">project</span> <span class="pre">we</span> <span class="pre">use</span> <span class="pre">a</span> <span class="pre">**constant-jerk</span> <span class="pre">Kalman</span> <span class="pre">filter**</span> <span class="pre">whose</span> <span class="pre">state</span> <span class="pre">is</span>
+<span class="pre">``[position,</span> <span class="pre">velocity,</span> <span class="pre">acceleration,</span> <span class="pre">jerk]</span></code>.</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>/encoder_raw                 ┌───────────────────────────┐            /estimated_states
+(EncoderRaw)  ──────────────▶│       encoder_reader      │───────────▶ (EncoderState)
+ticks, dt_us                 │   constant-jerk Kalman    │             position, velocity,
+                             │   filter                  │             acceleration, variances
+                             └───────────────────────────┘
+</pre></div>
+</div>
+<p><strong>Tuning — process and measurement noise.</strong> The filter is tuned with two covariances,
+both set in <code class="docutils literal notranslate"><span class="pre">params.yaml</span></code>. The process-noise matrix <code class="docutils literal notranslate"><span class="pre">Q</span></code> is a diagonal, and each state
+gets a <strong>different value because the states live at different orders of magnitude</strong>:</p>
+<p><strong>Process Noise</strong></p>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 24%" />
+<col style="width: 14%" />
+<col style="width: 62%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Parameter</p></th>
+<th class="head"><p>Value</p></th>
+<th class="head"><p>Meaning</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">kf_q_position</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">1e-8</span></code></p></td>
+<td><p>Process noise on position. Near zero — the model is trusted to carry position almost exactly.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">kf_q_velocity</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">1e-8</span></code></p></td>
+<td><p>Process noise on velocity. Also near zero, for the same reason.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">kf_q_acceleration</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">1e-3</span></code></p></td>
+<td><p>Process noise on acceleration. Small but non-zero.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">kf_q_jerk</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">5.0</span></code></p></td>
+<td><p>Process noise on jerk. Large — almost all of the model’s slack lives here.</p></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Measurement Noise</strong></p>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 24%" />
+<col style="width: 14%" />
+<col style="width: 62%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Parameter</p></th>
+<th class="head"><p>Value</p></th>
+<th class="head"><p>Meaning</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">kf_r_position</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">4.65e-6</span></code></p></td>
+<td><p>Measurement noise on the encoder position (in rad²). Larger = smoother, but trusts the encoder less.</p></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Interfaces.</strong> The node has three interfaces:</p>
+<ul class="simple">
+<li><p><strong>Subscribes</strong> <code class="docutils literal notranslate"><span class="pre">/encoder_raw</span></code> (<code class="docutils literal notranslate"><span class="pre">EncoderRaw</span></code>: <code class="docutils literal notranslate"><span class="pre">ticks</span></code>, <code class="docutils literal notranslate"><span class="pre">raw_position</span></code>, <code class="docutils literal notranslate"><span class="pre">dt_us</span></code>)
+— the raw encoder tick from a MCU (Teensy).</p></li>
+<li><p><strong>Subscribes</strong> <code class="docutils literal notranslate"><span class="pre">/zero_estimated_states</span></code> (<code class="docutils literal notranslate"><span class="pre">std_msgs/Empty</span></code>) — a event based signal
+to make the current estimated position turn to zero. This must be manually done by pressing
+zero button on the Verification System UI after the robot is already in it’s targeted
+home position.</p></li>
+<li><p><strong>Publishes</strong> <code class="docutils literal notranslate"><span class="pre">/estimated_states</span></code> (<code class="docutils literal notranslate"><span class="pre">EncoderState</span></code>: <code class="docutils literal notranslate"><span class="pre">position</span></code>, <code class="docutils literal notranslate"><span class="pre">velocity</span></code>,
+<code class="docutils literal notranslate"><span class="pre">acceleration</span></code>, their variances, and <code class="docutils literal notranslate"><span class="pre">raw_ticks</span></code>). The published <code class="docutils literal notranslate"><span class="pre">position</span></code> is the
+raw encoder angle minus the zero offset — <strong>not</strong> the filter’s own position state
+<code class="docutils literal notranslate"><span class="pre">x[0]</span></code>; only <code class="docutils literal notranslate"><span class="pre">velocity</span></code> and <code class="docutils literal notranslate"><span class="pre">acceleration</span></code> come from the filter.</p></li>
+</ul>
+<p>All topic names are <strong>relative</strong>, so the launch namespace <code class="docutils literal notranslate"><span class="pre">/G&lt;N&gt;/</span></code> is added in front (for
+example <code class="docutils literal notranslate"><span class="pre">/G0/encoder_raw</span></code>). The QoS profile is <strong>RELIABLE</strong> with <strong>KEEP_LAST depth 10</strong>.</p>
+<section id="node-workflow">
+<h2>Node Workflow<a class="headerlink" href="#node-workflow" title="Permalink to this heading"></a></h2>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>                  ┌─────────────────────────────────────────────────┐
+ /encoder_raw ───▶│  _cb(msg)                                       │
+                  │    dt = msg.dt_us × 1e-6                        │
+                  │    z  = msg.ticks × ticks_to_rad (last_raw_pos) │
+                  └───────────────────────┬─────────────────────────┘
+                                          │
+                        [Internal Logic in the _cb function]
+                                          │
+                                          ▼
+                          first sample ever?  ──── yes ──▶  x[0] = z ; return
+                                          │ no
+                                          ▼
+                                  dt &gt; 0 ?  ──── no ───▶  warn &quot;bad dt&quot; ; skip
+                                          │ yes
+                                          ▼
+                        F = build_F(dt)   (constant-jerk transition matrix)
+                                          │
+                                          ▼
+                        PREDICT : x⁻ = F·x, P⁻ = F·P·Fᵀ + Q
+                                          │
+                                          ▼
+                    UPDATE  : y = z − H·x⁻, K = P⁻·Hᵀ·(H·P⁻·Hᵀ + R)⁻¹,
+                              x = x⁻ + K·y, P = (I − K·H)·P⁻
+                                          │
+                                          ▼
+                          position: (ticks × ticks_to_rad) − zero_offset
+                          velocity: x[1]
+                          acceleration: x[2]
+                                          │
+                                          ▼
+                      publish  /estimated_states  (EncoderState)
+
+------------------------------------------------------------------------------------------
+
+ /zero_estimated_states (Empty) ──▶  _zero_cb()  :  zero_offset = last_raw_pos
+</pre></div>
+</div>
+<p>The incoming <code class="docutils literal notranslate"><span class="pre">/encoder_raw</span></code> will be calculated in the <code class="docutils literal notranslate"><span class="pre">self._cb</span></code> (subscription callback
+function). The raw tick will be converted to the radian unit, then go through the <strong>predict</strong>
+to get <code class="docutils literal notranslate"><span class="pre">x⁻</span></code> (predicted states estimate) and  <code class="docutils literal notranslate"><span class="pre">P⁻</span></code> (Predicted error covariance), then pass to the
+<strong>update</strong> step to get <code class="docutils literal notranslate"><span class="pre">x</span></code> (corrected states estimate) and other variables. The published position
+is the raw angle minus the current zero offset, while velocity and acceleration are taken
+from the corrected states estimate vector.</p>
+</section>
+<hr class="docutils" />
+<section id="examine-the-code">
+<h2>Examine the code<a class="headerlink" href="#examine-the-code" title="Permalink to this heading"></a></h2>
+<p>The full node lives in <code class="docutils literal notranslate"><span class="pre">scripts/Kalman_filter.py</span></code>. This section walks through it block by
+block.</p>
+<p><strong>Imports and messages.</strong></p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">rclpy</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">rclpy.node</span><span class="w"> </span><span class="kn">import</span> <span class="n">Node</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">rclpy.qos</span><span class="w"> </span><span class="kn">import</span> <span class="n">QoSProfile</span><span class="p">,</span> <span class="n">ReliabilityPolicy</span><span class="p">,</span> <span class="n">HistoryPolicy</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">std_msgs.msg</span><span class="w"> </span><span class="kn">import</span> <span class="n">Empty</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">claude_visualizer_interface.msg</span><span class="w"> </span><span class="kn">import</span> <span class="n">EncoderRaw</span><span class="p">,</span> <span class="n">EncoderState</span>
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">numpy</span></code> does the matrix maths of the Kalman filter. <code class="docutils literal notranslate"><span class="pre">rclpy</span></code> is the ROS 2 Python
+library, and <code class="docutils literal notranslate"><span class="pre">Node</span></code> is the base class every node inherits from. The <code class="docutils literal notranslate"><span class="pre">QoS</span></code> imports let
+us set how messages are delivered. <code class="docutils literal notranslate"><span class="pre">Empty</span></code> is the message type for the “re-zero” signal
+(it carries no data — the arrival itself is the signal). <code class="docutils literal notranslate"><span class="pre">EncoderRaw</span></code> and
+<code class="docutils literal notranslate"><span class="pre">EncoderState</span></code> are the project’s own message types, defined in the interface package.</p>
+<p><strong>The class and its motion model.</strong></p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">class</span><span class="w"> </span><span class="nc">KalmanFilterNode</span><span class="p">(</span><span class="n">Node</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Constant-jerk Kalman filter node (encoder_reader).</span>
+
+<span class="sd">    State vector  : x = [position, velocity, acceleration, jerk]  (rad, rad/s, rad/s², rad/s³)</span>
+<span class="sd">    Measurement   : position in radians converted from cumulative ticks</span>
+
+<span class="sd">    State-transition model (constant jerk, variable dt):</span>
+<span class="sd">        pos_{k+1} = pos + vel·dt + ½·acc·dt² + ⅙·jerk·dt³</span>
+<span class="sd">        vel_{k+1} = vel + acc·dt + ½·jerk·dt²</span>
+<span class="sd">        acc_{k+1} = acc + jerk·dt</span>
+<span class="sd">        jerk_{k+1} = jerk</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+</pre></div>
+</div>
+<p>The docstring states the model the whole node is built on. The four equations are the
+standard “next position from current motion” equations, carried out to the jerk term. The
+last line, <code class="docutils literal notranslate"><span class="pre">jerk_{k+1}</span> <span class="pre">=</span> <span class="pre">jerk</span></code>, is the assumption that gives the filter its name: jerk is
+held constant from one sample to the next. Everything below is this model written as
+matrices.</p>
+<p><strong>Constructor — parameters.</strong></p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+    <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="s2">&quot;encoder_reader&quot;</span><span class="p">)</span>
+
+    <span class="bp">self</span><span class="o">.</span><span class="n">declare_parameter</span><span class="p">(</span><span class="s2">&quot;ticks_per_rev&quot;</span><span class="p">,</span> <span class="mi">8192</span><span class="p">)</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">declare_parameter</span><span class="p">(</span><span class="s2">&quot;kf_q_position&quot;</span><span class="p">,</span> <span class="mf">0.001</span><span class="p">)</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">declare_parameter</span><span class="p">(</span><span class="s2">&quot;kf_q_velocity&quot;</span><span class="p">,</span> <span class="mf">0.01</span><span class="p">)</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">declare_parameter</span><span class="p">(</span><span class="s2">&quot;kf_q_acceleration&quot;</span><span class="p">,</span> <span class="mf">0.1</span><span class="p">)</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">declare_parameter</span><span class="p">(</span><span class="s2">&quot;kf_q_jerk&quot;</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">)</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">declare_parameter</span><span class="p">(</span><span class="s2">&quot;kf_r_position&quot;</span><span class="p">,</span> <span class="mf">0.5</span><span class="p">)</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">declare_parameter</span><span class="p">(</span><span class="s2">&quot;kf_p0&quot;</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">)</span>
+
+    <span class="n">ticks_per_rev</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_parameter</span><span class="p">(</span><span class="s2">&quot;ticks_per_rev&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">value</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">_ticks_to_rad</span> <span class="o">=</span> <span class="mf">2.0</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">pi</span> <span class="o">/</span> <span class="n">ticks_per_rev</span>
+</pre></div>
+</div>
+<p>The node registers as <code class="docutils literal notranslate"><span class="pre">encoder_reader</span></code> and then declares its tunable parameters. The
+values passed to <code class="docutils literal notranslate"><span class="pre">declare_parameter</span></code> here are only <strong>fallback defaults</strong>; at launch they
+are overridden by <code class="docutils literal notranslate"><span class="pre">params.yaml</span></code> (the tuned values shown in the table above). Finally it
+works out <code class="docutils literal notranslate"><span class="pre">_ticks_to_rad</span></code>, the factor that turns a raw tick count into radians — one full
+revolution is <code class="docutils literal notranslate"><span class="pre">ticks_per_rev</span></code> ticks and <code class="docutils literal notranslate"><span class="pre">2π</span></code> radians, so the factor is
+<code class="docutils literal notranslate"><span class="pre">2π</span> <span class="pre">/</span> <span class="pre">ticks_per_rev</span></code>.</p>
+<p><strong>Constructor — the Kalman filter matrices.</strong></p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="bp">self</span><span class="o">.</span><span class="n">_x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="mi">4</span><span class="p">)</span>               <span class="c1"># [pos, vel, acc, jerk]</span>
+<span class="bp">self</span><span class="o">.</span><span class="n">_P</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">eye</span><span class="p">(</span><span class="mi">4</span><span class="p">)</span> <span class="o">*</span> <span class="n">p0</span>            <span class="c1"># state covariance</span>
+<span class="bp">self</span><span class="o">.</span><span class="n">_Q</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">diag</span><span class="p">([</span><span class="n">q_pos</span><span class="p">,</span> <span class="n">q_vel</span><span class="p">,</span> <span class="n">q_acc</span><span class="p">,</span> <span class="n">q_jerk</span><span class="p">])</span>
+<span class="bp">self</span><span class="o">.</span><span class="n">_R</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([[</span><span class="n">r_pos</span><span class="p">]])</span>
+<span class="bp">self</span><span class="o">.</span><span class="n">_H</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([[</span><span class="mf">1.0</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">]])</span>
+<span class="bp">self</span><span class="o">.</span><span class="n">_initialized</span> <span class="o">=</span> <span class="kc">False</span>
+
+<span class="bp">self</span><span class="o">.</span><span class="n">_zero_offset_rad</span> <span class="o">=</span> <span class="mf">0.0</span>
+<span class="bp">self</span><span class="o">.</span><span class="n">_last_raw_pos_rad</span> <span class="o">=</span> <span class="mf">0.0</span>
+</pre></div>
+</div>
+<p>These are the pieces of the filter. <code class="docutils literal notranslate"><span class="pre">_x</span></code> is the current estimate of the four states,
+starting at zero. <code class="docutils literal notranslate"><span class="pre">_P</span></code> is the error covariance, showing how unsure the filter is
+about that estimate. <code class="docutils literal notranslate"><span class="pre">_Q</span></code> is the process noise (how much we distrust the motion model)
+and <code class="docutils literal notranslate"><span class="pre">_R</span></code> is the measurement noise (how much we distrust the encoder). <code class="docutils literal notranslate"><span class="pre">_H</span></code> is the
+measurement matrix <code class="docutils literal notranslate"><span class="pre">[1,</span> <span class="pre">0,</span> <span class="pre">0,</span> <span class="pre">0]</span></code>, which says “the encoder measures position only.”
+<code class="docutils literal notranslate"><span class="pre">_initialized</span></code> guards the first sample. The last two lines hold the zeroing state:
+<code class="docutils literal notranslate"><span class="pre">_zero_offset_rad</span></code> is the position we call zero, and <code class="docutils literal notranslate"><span class="pre">_last_raw_pos_rad</span></code> remembers
+the most recent raw position so a re-zero can capture it.</p>
+<p><strong>Constructor — ROS inputs and outputs.</strong></p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">qos</span> <span class="o">=</span> <span class="n">QoSProfile</span><span class="p">(</span>
+    <span class="n">reliability</span><span class="o">=</span><span class="n">ReliabilityPolicy</span><span class="o">.</span><span class="n">RELIABLE</span><span class="p">,</span>
+    <span class="n">history</span><span class="o">=</span><span class="n">HistoryPolicy</span><span class="o">.</span><span class="n">KEEP_LAST</span><span class="p">,</span>
+    <span class="n">depth</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="c1"># Relative topic names so the node&#39;s namespace (/G&lt;N&gt;) is prepended.</span>
+<span class="bp">self</span><span class="o">.</span><span class="n">_pub</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">create_publisher</span><span class="p">(</span><span class="n">EncoderState</span><span class="p">,</span> <span class="s2">&quot;estimated_states&quot;</span><span class="p">,</span> <span class="n">qos</span><span class="p">)</span>
+<span class="bp">self</span><span class="o">.</span><span class="n">create_subscription</span><span class="p">(</span><span class="n">EncoderRaw</span><span class="p">,</span> <span class="s2">&quot;encoder_raw&quot;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_cb</span><span class="p">,</span> <span class="n">qos</span><span class="p">)</span>
+<span class="bp">self</span><span class="o">.</span><span class="n">create_subscription</span><span class="p">(</span><span class="n">Empty</span><span class="p">,</span> <span class="s2">&quot;zero_estimated_states&quot;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_zero_cb</span><span class="p">,</span> <span class="n">qos</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>The QoS profile asks for reliable delivery and keeps the last 10 messages. The node then
+creates one publisher and two subscriptions. The subscriptions link each incoming topic to
+its callback: <code class="docutils literal notranslate"><span class="pre">encoder_raw</span></code> runs <code class="docutils literal notranslate"><span class="pre">_cb</span></code> (the filter), and <code class="docutils literal notranslate"><span class="pre">zero_estimated_states</span></code> runs
+<code class="docutils literal notranslate"><span class="pre">_zero_cb</span></code> (the re-zero). The topic names are written <strong>without</strong> a leading slash on
+purpose — that makes them relative, so the launch file’s namespace <code class="docutils literal notranslate"><span class="pre">/G&lt;N&gt;/</span></code> is added in
+front and each group’s nodes stay on their own topics.</p>
+<p><strong>The filter callback.</strong> This is the heart of the node. It runs once per encoder message.
+First, the setup and the two early exits:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">def</span><span class="w"> </span><span class="nf">_cb</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">msg</span><span class="p">:</span> <span class="n">EncoderRaw</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+    <span class="n">dt</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">msg</span><span class="o">.</span><span class="n">dt_us</span><span class="p">)</span> <span class="o">*</span> <span class="mf">1e-6</span>
+    <span class="n">z</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">msg</span><span class="o">.</span><span class="n">ticks</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ticks_to_rad</span><span class="p">])</span>
+
+    <span class="c1"># Seed state with first measurement; skip until dt is valid</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">_initialized</span><span class="p">:</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_x</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="n">z</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_initialized</span> <span class="o">=</span> <span class="kc">True</span>
+        <span class="k">return</span>
+
+    <span class="k">if</span> <span class="n">dt</span> <span class="o">&lt;=</span> <span class="mf">0.0</span><span class="p">:</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">get_logger</span><span class="p">()</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;dt_us=</span><span class="si">{</span><span class="n">msg</span><span class="o">.</span><span class="n">dt_us</span><span class="si">}</span><span class="s2"> — skipping sample&quot;</span><span class="p">,</span> <span class="n">throttle_duration_sec</span><span class="o">=</span><span class="mf">1.0</span>
+        <span class="p">)</span>
+        <span class="k">return</span>
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">dt</span></code> is the time step in seconds (the message carries microseconds). <code class="docutils literal notranslate"><span class="pre">z</span></code> is the
+measurement: the tick count turned into radians. On the very first message there is no
+previous state to predict from, so the filter just sets its position to the measurement and
+returns. On any later message with a non-positive <code class="docutils literal notranslate"><span class="pre">dt</span></code> it warns and skips, because a zero
+or negative time step would break the maths.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">F</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_build_F</span><span class="p">(</span><span class="n">dt</span><span class="p">)</span>
+
+<span class="c1"># ── Predict ──</span>
+<span class="n">x_pred</span> <span class="o">=</span> <span class="n">F</span> <span class="o">@</span> <span class="bp">self</span><span class="o">.</span><span class="n">_x</span>
+<span class="n">P_pred</span> <span class="o">=</span> <span class="n">F</span> <span class="o">@</span> <span class="bp">self</span><span class="o">.</span><span class="n">_P</span> <span class="o">@</span> <span class="n">F</span><span class="o">.</span><span class="n">T</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">_Q</span>
+
+<span class="c1"># ── Update ──</span>
+<span class="n">y</span> <span class="o">=</span> <span class="n">z</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">_H</span> <span class="o">@</span> <span class="n">x_pred</span>
+<span class="n">S</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_H</span> <span class="o">@</span> <span class="n">P_pred</span> <span class="o">@</span> <span class="bp">self</span><span class="o">.</span><span class="n">_H</span><span class="o">.</span><span class="n">T</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">_R</span>
+<span class="n">K</span> <span class="o">=</span> <span class="n">P_pred</span> <span class="o">@</span> <span class="bp">self</span><span class="o">.</span><span class="n">_H</span><span class="o">.</span><span class="n">T</span> <span class="o">@</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">inv</span><span class="p">(</span><span class="n">S</span><span class="p">)</span>
+<span class="bp">self</span><span class="o">.</span><span class="n">_x</span> <span class="o">=</span> <span class="n">x_pred</span> <span class="o">+</span> <span class="p">(</span><span class="n">K</span> <span class="o">@</span> <span class="n">y</span><span class="p">)</span>
+<span class="bp">self</span><span class="o">.</span><span class="n">_P</span> <span class="o">=</span> <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">eye</span><span class="p">(</span><span class="mi">4</span><span class="p">)</span> <span class="o">-</span> <span class="n">K</span> <span class="o">@</span> <span class="bp">self</span><span class="o">.</span><span class="n">_H</span><span class="p">)</span> <span class="o">@</span> <span class="n">P_pred</span>
+</pre></div>
+</div>
+<p>This is the standard two-step Kalman filter. <strong>Predict</strong>: use the transition matrix <code class="docutils literal notranslate"><span class="pre">F</span></code>
+to push the state forward one time step, and grow the uncertainty by the process noise
+<code class="docutils literal notranslate"><span class="pre">Q</span></code>. <strong>Update</strong>: compare the real measurement to the predicted position (<code class="docutils literal notranslate"><span class="pre">y</span></code>, the
+“innovation”), work out the Kalman gain <code class="docutils literal notranslate"><span class="pre">K</span></code> (how much to trust the measurement versus the
+prediction), then nudge the state and shrink the uncertainty. The gain is what balances a
+smooth output against a responsive one.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="c1"># ── Publish ──</span>
+<span class="bp">self</span><span class="o">.</span><span class="n">_last_raw_pos_rad</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">msg</span><span class="o">.</span><span class="n">ticks</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ticks_to_rad</span><span class="p">)</span>
+
+<span class="n">out</span> <span class="o">=</span> <span class="n">EncoderState</span><span class="p">()</span>
+<span class="n">out</span><span class="o">.</span><span class="n">header</span>       <span class="o">=</span> <span class="n">msg</span><span class="o">.</span><span class="n">header</span>
+<span class="c1"># out.position     = float(self._x[0])</span>
+<span class="n">out</span><span class="o">.</span><span class="n">position</span>     <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_last_raw_pos_rad</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">_zero_offset_rad</span>
+<span class="n">out</span><span class="o">.</span><span class="n">velocity</span>     <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_x</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span>
+<span class="n">out</span><span class="o">.</span><span class="n">acceleration</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_x</span><span class="p">[</span><span class="mi">2</span><span class="p">])</span>
+<span class="n">out</span><span class="o">.</span><span class="n">pos_variance</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_P</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">])</span>
+<span class="n">out</span><span class="o">.</span><span class="n">vel_variance</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_P</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">])</span>
+<span class="n">out</span><span class="o">.</span><span class="n">acc_variance</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_P</span><span class="p">[</span><span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">])</span>
+<span class="n">out</span><span class="o">.</span><span class="n">raw_ticks</span>    <span class="o">=</span> <span class="n">msg</span><span class="o">.</span><span class="n">ticks</span>
+<span class="bp">self</span><span class="o">.</span><span class="n">_pub</span><span class="o">.</span><span class="n">publish</span><span class="p">(</span><span class="n">out</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>Finally the node fills in and publishes the result. Note the commented-out
+<code class="docutils literal notranslate"><span class="pre">#</span> <span class="pre">out.position</span> <span class="pre">=</span> <span class="pre">float(self._x[0])</span></code>: the filter’s own position estimate is deliberately
+<strong>not</strong> used. Instead the published position is the raw encoder angle minus the zero
+offset. This is a design choice — the raw angle is already accurate, and subtracting one
+constant offset keeps every consumer on the same zero without the filter’s small lag. Only
+<code class="docutils literal notranslate"><span class="pre">velocity</span></code> and <code class="docutils literal notranslate"><span class="pre">acceleration</span></code> come from the filter state (<code class="docutils literal notranslate"><span class="pre">x[1]</span></code> and <code class="docutils literal notranslate"><span class="pre">x[2]</span></code>); the
+variances come from the diagonal of <code class="docutils literal notranslate"><span class="pre">P</span></code> and travel with the estimate so a reader can see
+how confident the filter is.</p>
+<p><strong>The re-zero callback.</strong></p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">def</span><span class="w"> </span><span class="nf">_zero_cb</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">_msg</span><span class="p">:</span> <span class="n">Empty</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Capture the current raw position as the new zero reference.&quot;&quot;&quot;</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">_zero_offset_rad</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_last_raw_pos_rad</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">get_logger</span><span class="p">()</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+        <span class="sa">f</span><span class="s2">&quot;[zero] /estimated_states zeroed at </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">_zero_offset_rad</span><span class="si">:</span><span class="s2">.5f</span><span class="si">}</span><span class="s2"> rad&quot;</span>
+    <span class="p">)</span>
+</pre></div>
+</div>
+<p>When an empty message arrives on <code class="docutils literal notranslate"><span class="pre">/zero_estimated_states</span></code>, this stores the most recent
+raw position as the new zero offset. From the next published message on, <code class="docutils literal notranslate"><span class="pre">position</span></code>
+counts from that point. Because the offset is applied here, at the source, every downstream
+reader (the web UI, the LSL stream, the evaluator) sees the same zeroed frame — no reader
+has to correct the position itself.</p>
+<p><strong>Main.</strong></p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">(</span><span class="n">args</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+    <span class="n">rclpy</span><span class="o">.</span><span class="n">init</span><span class="p">(</span><span class="n">args</span><span class="o">=</span><span class="n">args</span><span class="p">)</span>
+    <span class="n">node</span> <span class="o">=</span> <span class="n">KalmanFilterNode</span><span class="p">()</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">rclpy</span><span class="o">.</span><span class="n">spin</span><span class="p">(</span><span class="n">node</span><span class="p">)</span>
+    <span class="k">except</span> <span class="ne">KeyboardInterrupt</span><span class="p">:</span>
+        <span class="k">pass</span>
+    <span class="k">finally</span><span class="p">:</span>
+        <span class="n">node</span><span class="o">.</span><span class="n">destroy_node</span><span class="p">()</span>
+        <span class="n">rclpy</span><span class="o">.</span><span class="n">shutdown</span><span class="p">()</span>
+</pre></div>
+</div>
+<p>This is the standard ROS 2 entry point. It starts ROS, creates the node, and calls
+<code class="docutils literal notranslate"><span class="pre">rclpy.spin</span></code> to hand control to ROS so the callbacks run whenever a message arrives.
+<code class="docutils literal notranslate"><span class="pre">spin</span></code> blocks until the node is stopped (<code class="docutils literal notranslate"><span class="pre">Ctrl+C</span></code> raises <code class="docutils literal notranslate"><span class="pre">KeyboardInterrupt</span></code>); the
+<code class="docutils literal notranslate"><span class="pre">finally</span></code> block then cleans up the node and shuts ROS down tidily.</p>
+</section>
+<hr class="docutils" />
+<section id="future-works">
+<h2>Future Works<a class="headerlink" href="#future-works" title="Permalink to this heading"></a></h2>
+<ul class="simple">
+<li><p>Q and R matrix tuning using the sine sweep signal.</p></li>
+</ul>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2026, Institute of Field Robotics.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

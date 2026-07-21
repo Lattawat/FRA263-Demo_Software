@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.18.1: http://docutils.sourceforge.net/" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>System Architecture &amp; Overview &mdash; FRA263 Software 0.1 documentation</title>
+      <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="_static/css/theme.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script src="_static/jquery.js?v=5d32c60e"></script>
+        <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+        <script data-url_root="./" id="documentation_options" src="_static/documentation_options.js?v=e031e9a9"></script>
+        <script src="_static/doctools.js?v=888ff710"></script>
+        <script src="_static/sphinx_highlight.js?v=4825356b"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Getting Started" href="get_started.html" />
+    <link rel="prev" title="FRA263/4 Demo Software Development for developers" href="index.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="index.html" class="icon icon-home">
+            FRA263 Software
+          </a>
+              <div class="version">
+                0.1.0
+              </div>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul class="current">
+<li class="toctree-l1 current"><a class="current reference internal" href="#">System Architecture &amp; Overview</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#system-architecture">System Architecture</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#data-flow-protocols">Data Flow &amp; Protocols</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#base-system">Base System</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#back-end">Back-end</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#front-end">Front-end</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#verification-system">Verification System</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#id1">Back-end</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#micro-ros-agent-teensy-bridge">micro_ros_agent (Teensy bridge)</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#kalman-filter-node">Kalman Filter node</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#web-visualizer-node">Web Visualizer node</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#system-evaluator-node">System Evaluator node</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="#id2">Front-end</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#notation">Notation</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="get_started.html">Getting Started</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Base%20System.html">Base System</a></li>
+<li class="toctree-l1"><a class="reference internal" href="verification_system/verification_system.html">Verification System Implementation</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">FRA263 Software</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">System Architecture &amp; Overview</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/system_overview.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="system-architecture-overview">
+<h1>System Architecture &amp; Overview<a class="headerlink" href="#system-architecture-overview" title="Permalink to this heading"></a></h1>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>This page explains the <strong>overview</strong> of the system. For the implementation details, see
+the <a class="reference internal" href="Base%20System.html"><span class="doc">Base System</span></a> and <span class="xref std std-doc">verification_system</span> pages.</p>
+</div>
+<p>The software has <strong>two systems that work together</strong>:</p>
+<ol class="arabic simple">
+<li><p><strong>Base System</strong> — the part the <em>students</em> use. It gives their robot a ready-made
+user interface (UI) and a command layer, so they can drive the robot without
+building their own interface.</p></li>
+<li><p><strong>Verification System</strong> — the part the <em>lecturer</em> uses on demo day. It measures the
+robot with an encoder and evaluates its performance automatically.</p></li>
+</ol>
+<p><strong>Tech stack:</strong></p>
+<ul class="simple">
+<li><p>Python (asyncio) for the Base System back-end.</p></li>
+<li><p>React web UI in Docker for the front-end.</p></li>
+<li><p>ROS 2 Jazzy + micro-ROS for the Verification System.</p></li>
+<li><p>The links between parts use Modbus RTU, WebSocket, and LSL.</p></li>
+</ul>
+<p><strong>GitHub Repository map</strong>:</p>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 34%" />
+<col style="width: 66%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Folder</p></th>
+<th class="head"><p>What it is</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">FRA263-264_BaseSystem_BackEnd/</span></code></p></td>
+<td><p>Base System back-end (Python): Modbus + WebSocket + LSL.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">FRA263-264_BaseSystem_FrontEnd/</span></code></p></td>
+<td><p>Base System front-end: the web UI, shipped as a Docker image and an <code class="docutils literal notranslate"><span class="pre">.exe</span></code>.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">claude-visualizer-ws/</span></code></p></td>
+<td><p>Verification System: a ROS 2 Jazzy workspace (four nodes + Teensy firmware + Mock UI for debugging).</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">docs/</span></code></p></td>
+<td><p>This documentation (Sphinx / ReadTheDocs).</p></td>
+</tr>
+</tbody>
+</table>
+<section id="system-architecture">
+<h2>System Architecture<a class="headerlink" href="#system-architecture" title="Permalink to this heading"></a></h2>
+<p>The block diagram below shows how the pieces connect. Each arrow is one link. The text on
+an arrow is the protocol, and the topic, stream, or message it carries — so you can read
+each block’s inputs and outputs straight from the diagram.</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>===================  BASE SYSTEM  ===================
+
+Robot (STM32)
+  |  ^
+  |  |  Modbus RTU over USB serial  (registers 0x00-0x31, 230400 8-E-1, slave 21)
+  v  |
+Base System Back-End  (Python, asyncio)
+  |
+  |--- WebSocket + JSON (ws://localhost:8765) --&gt; Front-End UI (browser, port 3000)
+  |        down: STATS status      up: {mode, action} commands
+  |
+  &#39;--- LSL over the LAN --&gt; Verification System
+           out: ActualStates, EventTrigger      in: EstimatedStates
+
+
+===============  VERIFICATION SYSTEM  ===============
+===  ROS 2 Jazzy -- all topics live under namespace /G&lt;N&gt;/  ===
+
+Encoder (Teensy 4.1)
+  |  micro-ROS over serial (baudrate 115200)
+  v
+micro_ros_agent
+  |  out: /encoder_raw  (EncoderRaw)
+  v
+encoder_reader  (Kalman filter)
+  |  Kalman gives velocity + acceleration; position = raw angle - zero
+  |  out: /estimated_states  (EncoderState)
+  |
+  |--&gt; experiment_evaluator
+  |        in : /event_trigger (start/stop), /estimated_states
+  |        out: /eval_live, /eval_summary  (ExperimentEval)
+  |
+  &#39;--&gt; web_visualizer  (LSL &lt;-&gt; ROS bridge + web server)
+           in : /estimated_states, /actual_states, /event_trigger,
+                /eval_live, /eval_summary, LSL ActualStates + EventTrigger
+           out: LSL EstimatedStates, /zero_estimated_states,
+                WebSocket JSON --&gt; Browser dashboard (HTTP :8000, WS :9090)
+
+Browser dashboard: uPlot charts, live evaluation, Zero / Skip / Pos-Sync / CSV
+</pre></div>
+</div>
+<p>Brief description: the robot talks to the Base System over a USB cable using Modbus RTU.
+The back-end of the Base System reads the robot’s data (<code class="docutils literal notranslate"><span class="pre">ActualStates</span></code>) and sends it to
+the web UI over a WebSocket, and at the same time streams the <code class="docutils literal notranslate"><span class="pre">ActualStates</span></code> to the
+Verification System over the network using LSL (Lab Streaming Layer library).</p>
+<p>The Verification System has an encoder to measure the real position of the robot, a Kalman
+Filter to estimate the states, and the node (web visualizer) to gather all data and
+visualize it in another web UI. Lastly, the evaluator node runs in parallel to evaluate
+the robot’s performance and report it back to the user through the web UI also.</p>
+<section id="data-flow-protocols">
+<h3>Data Flow &amp; Protocols<a class="headerlink" href="#data-flow-protocols" title="Permalink to this heading"></a></h3>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 17%" />
+<col style="width: 17%" />
+<col style="width: 21%" />
+<col style="width: 19%" />
+<col style="width: 25%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Sender</p></th>
+<th class="head"><p>Receiver</p></th>
+<th class="head"><p>Protocol</p></th>
+<th class="head"><p>Address / Port</p></th>
+<th class="head"><p>Payload</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>Robot</p></td>
+<td><p>Base System Back-end</p></td>
+<td><p>Modbus RTU (USB serial) (Bidirectional)</p></td>
+<td><ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">/dev/ttyACM*</span></code></p></li>
+<li><p>baudrate 230400</p></li>
+<li><p>8-E-1</p></li>
+<li><p>slave address 21</p></li>
+</ul>
+</td>
+<td><p>16-bit registers <code class="docutils literal notranslate"><span class="pre">0x00</span></code>–<code class="docutils literal notranslate"><span class="pre">0x31</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p>Base System webUI</p></td>
+<td><p>Base System Back-end</p></td>
+<td><p>WebSocket (JSON) (Bidirectional)</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">ws://localhost:8765</span></code></p></td>
+<td><ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">STATS</span></code> messages to UI</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">{mode,</span> <span class="pre">action}</span></code> commands from user to Back-end</p></li>
+</ul>
+</td>
+</tr>
+<tr class="row-even"><td><p>Base System Back-end</p></td>
+<td><p>Verification System Back-end</p></td>
+<td><ul class="simple">
+<li><p>LSL stream <code class="docutils literal notranslate"><span class="pre">ActualStates</span></code></p></li>
+<li><p>LSL stream <code class="docutils literal notranslate"><span class="pre">EventTrigger</span></code></p></li>
+</ul>
+</td>
+<td><p>LAN</p></td>
+<td><ul class="simple">
+<li><p>Robot’s actual states: position, speed, accel</p></li>
+<li><p>one JSON message per user action</p></li>
+</ul>
+</td>
+</tr>
+<tr class="row-odd"><td><p>Verification System Back-end</p></td>
+<td><p>Base System Back-end</p></td>
+<td><p>LSL stream <code class="docutils literal notranslate"><span class="pre">EstimatedStates</span></code></p></td>
+<td><p>LAN</p></td>
+<td><p>Estimated states: position, velocity, accel</p></td>
+</tr>
+<tr class="row-even"><td><p>One node in the Verification System</p></td>
+<td><p>Another node in the Verification System</p></td>
+<td><p>ROS 2 topics/services (DDS)</p></td>
+<td><p>same network and ROS_DOMAIN_ID</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">EncoderRaw</span></code>, <code class="docutils literal notranslate"><span class="pre">EncoderState</span></code>, <code class="docutils literal notranslate"><span class="pre">EventTrigger</span></code>, <code class="docutils literal notranslate"><span class="pre">ExperimentEval</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p>Teensy</p></td>
+<td><p>Verification System Back-end</p></td>
+<td><p>micro-ROS (USB serial)</p></td>
+<td><ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">/dev/ttyACM*</span></code></p></li>
+<li><p>baudrate 115200</p></li>
+</ul>
+</td>
+<td><p><code class="docutils literal notranslate"><span class="pre">/encoder_raw</span></code> messages</p></td>
+</tr>
+<tr class="row-even"><td><p>Verification System webUI</p></td>
+<td><p>Verification System Back-end (web_visualizer)</p></td>
+<td><p>HTTP + WebSocket (JSON)</p></td>
+<td><ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">http://localhost:8000</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">ws://localhost:9090</span></code></p></li>
+</ul>
+</td>
+<td><ul class="simple">
+<li><p>Robot’s actual states</p></li>
+<li><p>Estimated states</p></li>
+<li><p>Events triggering signal</p></li>
+<li><p>Live evaluation data</p></li>
+</ul>
+</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Methods to handle multiple machines in the same network</strong></p>
+<ul class="simple">
+<li><p>Each Back-end and front-end is on the same local machine, so there is no problem</p></li>
+<li><p>ROS message of the Verification System will be published under the namespace <code class="docutils literal notranslate"><span class="pre">/G&lt;N&gt;/</span></code>,</p></li>
+</ul>
+<p>specified by a launch argument <code class="docutils literal notranslate"><span class="pre">--group-number</span></code>. The default is 0.
+* LSL streams name is modified by adding a suffix <code class="docutils literal notranslate"><span class="pre">_N</span></code>, where N is the same launch argument.
+* The criteria which is used in the evaluation node will be depended on the <code class="docutils literal notranslate"><span class="pre">--group-number</span></code>
+argument also. You can check it out in the <code class="docutils literal notranslate"><span class="pre">/claude-visualizer-ws/src/config/criteria.yaml</span></code>.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p><code class="docutils literal notranslate"><span class="pre">group_number</span> <span class="pre">0</span></code> is the default single-group case:
+* namespace <code class="docutils literal notranslate"><span class="pre">/G0/</span></code>
+* no LSL suffix
+* <code class="docutils literal notranslate"><span class="pre">default</span></code> criteria row.</p>
+</div>
+</section>
+</section>
+<section id="base-system">
+<h2>Base System<a class="headerlink" href="#base-system" title="Permalink to this heading"></a></h2>
+<p>The Base System is the part students use to drive their robot. It gives them a finished
+UI and a command layer, so they can focus on their robot instead of building an
+interface. It has two parts — a <strong>back-end</strong> and a <strong>front-end</strong> — that talk over a local
+WebSocket.</p>
+<section id="back-end">
+<h3>Back-end<a class="headerlink" href="#back-end" title="Permalink to this heading"></a></h3>
+<p><strong>Objective.</strong> The back-end is the bridge between the web UI and the robot controller
+(an STM32 board). It turns simple UI actions into Modbus commands, reads the robot’s
+status back, and shares the data with the Verification System.</p>
+<p><strong>Functions and features:</strong></p>
+<ol class="arabic simple">
+<li><p><strong>Built with Python asyncio.</strong> It runs three independent loops at fixed rates, so one
+slow task does not block the others: a <strong>5 Hz</strong> heartbeat, a <strong>25 Hz</strong> status poll, and
+a <strong>25 Hz</strong> broadcast to the web UI and the LSL stream.</p></li>
+<li><p><strong>Heartbeat.</strong> It reads register <code class="docutils literal notranslate"><span class="pre">0x00</span></code> on the robot controller (the STM32 MCU) at
+5 Hz. When the robot writes <strong>YA (22881)</strong>, the back-end writes <strong>HI (18537)</strong> back. If
+YA stops arriving in time, the UI shows the link as “not alive”, even when the cable is
+still plugged in.</p></li>
+<li><p><strong>Status poll.</strong> It reads the register block <code class="docutils literal notranslate"><span class="pre">0x00</span></code>–<code class="docutils literal notranslate"><span class="pre">0x31</span></code> on the robot controller
+(the STM32 MCU) at 25 Hz to get position, speed, gripper state, mode, and the emergency
+flag.</p></li>
+<li><p><strong>Command handling.</strong> It receives messages from the UI in JSON format to command the
+robot — Home, Manual / Jog, Auto (pick-and-place or point-to-point), Test (performance
+or precision), and Stop — and writes the matching Modbus registers.</p></li>
+<li><p><strong>Verification link.</strong> It publishes two LSL streams: <code class="docutils literal notranslate"><span class="pre">ActualStates</span></code> (position, speed,
+accel) and <code class="docutils literal notranslate"><span class="pre">EventTrigger</span></code> (a JSON message for every user action), so the Verification
+System can detect the robot’s action and evaluate its performance.</p></li>
+<li><p><strong>Multi-group support.</strong> Setting the group number <code class="docutils literal notranslate"><span class="pre">N</span></code> adds a <code class="docutils literal notranslate"><span class="pre">_N</span></code> suffix to the LSL
+stream names, so many groups can run on one LAN without mixing their data.</p></li>
+</ol>
+</section>
+<section id="front-end">
+<h3>Front-end<a class="headerlink" href="#front-end" title="Permalink to this heading"></a></h3>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p><em>Author to complete.</em> The front-end is shipped as a compiled Docker image and an
+<code class="docutils literal notranslate"><span class="pre">.exe</span></code> (no source in this repository), so this subsection is left as a skeleton.</p>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">FRA263-264_BaseSystem_FrontEnd/HowToUse.pdf</span></code></p>
+</section>
+</section>
+<section id="verification-system">
+<h2>Verification System<a class="headerlink" href="#verification-system" title="Permalink to this heading"></a></h2>
+<p>This part is used to evaluate the robot on demo day. Before, a person had to watch the
+logged data by eye in STM32CubeIDE. The Verification System does this automatically: it
+reads the real position with an <strong>encoder</strong>, estimates velocity and acceleration with a
+<strong>Kalman filter</strong>, shows the data on a web UI, and checks the robot’s performance against
+set limits.</p>
+<section id="id1">
+<h3>Back-end<a class="headerlink" href="#id1" title="Permalink to this heading"></a></h3>
+<p>The back-end is split into <strong>four ROS 2 nodes</strong>.</p>
+<section id="micro-ros-agent-teensy-bridge">
+<h4>micro_ros_agent (Teensy bridge)<a class="headerlink" href="#micro-ros-agent-teensy-bridge" title="Permalink to this heading"></a></h4>
+<p><strong>Role.</strong> It connects the Teensy 4.1 board to ROS 2. The Teensy firmware reads an
+8192-count quadrature encoder and publishes the raw ticks. The agent carries these
+messages from the board (over USB serial, baudrate 115200) into the ROS 2 network, on the
+<code class="docutils literal notranslate"><span class="pre">/encoder_raw</span></code> topic (<code class="docutils literal notranslate"><span class="pre">EncoderRaw</span></code>: ticks, raw position, <code class="docutils literal notranslate"><span class="pre">dt_us</span></code>) at about 100 Hz.</p>
+<p><strong>Features.</strong> For hardware-free development, <code class="docutils literal notranslate"><span class="pre">mock_ui.py</span></code> (a Tkinter GUI) replaces both
+the Teensy <strong>and</strong> the robot: it publishes <code class="docutils literal notranslate"><span class="pre">/encoder_raw</span></code> and <code class="docutils literal notranslate"><span class="pre">/event_trigger</span></code> and both
+LSL streams, so the whole pipeline can run on any machine. (The older <code class="docutils literal notranslate"><span class="pre">mock_encoder.py</span></code>
+only replaces the Teensy and is now deprecated.)</p>
+</section>
+<section id="kalman-filter-node">
+<h4>Kalman Filter node<a class="headerlink" href="#kalman-filter-node" title="Permalink to this heading"></a></h4>
+<p><strong>Role</strong> (node name <code class="docutils literal notranslate"><span class="pre">encoder_reader</span></code>). It turns the noisy raw ticks into smooth velocity
+and acceleration, and a clean position.</p>
+<p><strong>Model.</strong> It uses a <strong>constant-jerk Kalman filter</strong>. The state is
+<code class="docutils literal notranslate"><span class="pre">[position,</span> <span class="pre">velocity,</span> <span class="pre">acceleration,</span> <span class="pre">jerk]</span></code>. Each new tick reading is used to predict and
+then correct the state. The <strong>velocity and acceleration</strong> come from the filter; the
+published <strong>position</strong> is the raw encoder angle minus a zero offset (not the filter’s
+position state). The process- and measurement-noise values (<code class="docutils literal notranslate"><span class="pre">Q</span></code> and <code class="docutils literal notranslate"><span class="pre">R</span></code>) are tuned in
+<code class="docutils literal notranslate"><span class="pre">params.yaml</span></code>. The node can re-zero its position on request (topic
+<code class="docutils literal notranslate"><span class="pre">/zero_estimated_states</span></code>), so every subscriber shares the same zero point. It reads
+<code class="docutils literal notranslate"><span class="pre">/encoder_raw</span></code> and publishes <code class="docutils literal notranslate"><span class="pre">/estimated_states</span></code> (<code class="docutils literal notranslate"><span class="pre">EncoderState</span></code>: position, velocity,
+acceleration, plus their variances and the raw tick count).</p>
+</section>
+<section id="web-visualizer-node">
+<h4>Web Visualizer node<a class="headerlink" href="#web-visualizer-node" title="Permalink to this heading"></a></h4>
+<p><strong>Role</strong> (node name <code class="docutils literal notranslate"><span class="pre">web_visualizer</span></code>). It is the bridge and the web server. It connects
+three worlds — LSL, ROS 2, and the browser.</p>
+<p><strong>Features:</strong></p>
+<ul class="simple">
+<li><p>Reads the data from the Base System’s LSL streams (<code class="docutils literal notranslate"><span class="pre">ActualStates</span></code>, <code class="docutils literal notranslate"><span class="pre">EventTrigger</span></code>)
+and brings it into ROS 2 topics.</p></li>
+<li><p>Sends the Kalman result (<code class="docutils literal notranslate"><span class="pre">/estimated_states</span></code>) back out as an LSL stream
+(<code class="docutils literal notranslate"><span class="pre">EstimatedStates</span></code>), so the robot side can read the filtered data.</p></li>
+<li><p>Serves the verifier web page over <strong>HTTP (localhost:8000)</strong> and streams live JSON to the
+browser over <strong>WebSocket (localhost:9090)</strong>.</p></li>
+<li><p>Handles browser commands: zero, stop experiment, skip iteration, update criteria, and
+time / position sync.</p></li>
+</ul>
+</section>
+<section id="system-evaluator-node">
+<h4>System Evaluator node<a class="headerlink" href="#system-evaluator-node" title="Permalink to this heading"></a></h4>
+<p><strong>Role</strong> (node name <code class="docutils literal notranslate"><span class="pre">experiment_evaluator</span></code>). It watches a run and evaluates it
+automatically.</p>
+<p><strong>Features.</strong> It waits for a start event — one of <code class="docutils literal notranslate"><span class="pre">point_to_point</span></code>, <code class="docutils literal notranslate"><span class="pre">pick_place</span></code>,
+<code class="docutils literal notranslate"><span class="pre">performance</span></code>, or <code class="docutils literal notranslate"><span class="pre">precision</span></code> — then evaluates the robot from the estimated states.
+This node also provides the data of the experiments — including initial and target
+position, current error, and so on — to the UI to help the visualization. The pass/fail
+limits can be configured in two ways: (1) directly in the UI, and (2) in <code class="docutils literal notranslate"><span class="pre">criteria.yaml</span></code>.</p>
+<p>Typical metrics: settling time, overshoot (%), final error, peak speed and acceleration,
+and precision (the mean and spread of repeated stops).</p>
+</section>
+</section>
+<section id="id2">
+<h3>Front-end<a class="headerlink" href="#id2" title="Permalink to this heading"></a></h3>
+<p><strong>Role.</strong> The front-end is the browser dashboard, served by the web visualizer node. It
+shows the live data and the evaluation results, so the lecturer can watch the robot’s
+performance in real time.</p>
+<p><strong>Features:</strong></p>
+<ul class="simple">
+<li><p>Live <strong>uPlot</strong> charts of the actual and estimated position, velocity, and acceleration
+(updated about 30 times per second).</p></li>
+<li><p>An <strong>evaluation panel</strong> that shows the live metrics and the final pass/fail result from
+the evaluator node.</p></li>
+<li><p>A <strong>Criteria tab</strong> to edit the pass/fail limits live (sent to the evaluator node).</p></li>
+<li><p>Controls for <strong>Zero</strong> (re-home the position), <strong>Skip Iteration</strong> (drop a stuck
+waypoint / trial), <strong>Pos Sync</strong>, and <strong>CSV export</strong> of the recorded data.</p></li>
+<li><p>It finds the right WebSocket port itself (by reading <code class="docutils literal notranslate"><span class="pre">/config.json</span></code>), so it always
+connects back to whichever machine served the page.</p></li>
+</ul>
+</section>
+</section>
+<section id="notation">
+<h2>Notation<a class="headerlink" href="#notation" title="Permalink to this heading"></a></h2>
+<p>Words and symbols used in this documentation and in the code.</p>
+<dl class="simple">
+<dt>YA / HI</dt><dd><p>Heartbeat “magic numbers”. The robot writes <strong>YA = 22881</strong> into register <code class="docutils literal notranslate"><span class="pre">0x00</span></code> to
+ask “are you there?”; the back-end writes <strong>HI = 18537</strong> to answer. Each is a pair of
+ASCII letters read as one 16-bit number.</p>
+</dd>
+<dt>Modbus RTU register</dt><dd><p>A 16-bit value stored at a numbered address (written in hex, <code class="docutils literal notranslate"><span class="pre">0x00</span></code>–<code class="docutils literal notranslate"><span class="pre">0x31</span></code>). Signed
+values use <strong>two’s complement</strong>. Some values are stored <strong>×10</strong> (for example, a raw
+<code class="docutils literal notranslate"><span class="pre">1234</span></code> means <code class="docutils literal notranslate"><span class="pre">123.4</span></code>).</p>
+</dd>
+<dt>LSL (Lab Streaming Layer)</dt><dd><p>A library for sending data streams over a network. A source publishes an <strong>outlet</strong>; a
+reader gets the data with an <strong>inlet</strong>. Streams are found by their <strong>name</strong> and
+<strong>source_id</strong>. <strong>IRREGULAR_RATE</strong> means samples arrive only when something happens
+(used for <code class="docutils literal notranslate"><span class="pre">EventTrigger</span></code>).</p>
+</dd>
+<dt>ROS 2 / rclpy / topic / QoS</dt><dd><p><strong>ROS 2 (Jazzy)</strong> is the robotics middleware the Verification System is built on.
+<strong>rclpy</strong> is its Python API. Nodes exchange messages over named <strong>topics</strong>. <strong>QoS</strong>
+(Quality of Service) sets the delivery rules — here, RELIABLE and “keep the last 10”.</p>
+</dd>
+<dt>micro-ROS</dt><dd><p>A small version of ROS 2 that runs on a microcontroller (the Teensy board).
+<code class="docutils literal notranslate"><span class="pre">micro_ros_agent</span></code> connects it to the main ROS 2 network.</p>
+</dd>
+<dt>Constant-jerk Kalman filter</dt><dd><p>A filter whose motion model assumes the <strong>jerk</strong> (the rate of change of acceleration)
+is roughly constant between samples. This gives smooth position, velocity, and
+acceleration estimates from noisy encoder ticks.</p>
+</dd>
+<dt>group_number / namespace</dt><dd><p>Settings that keep robot setups apart on one network. A single <code class="docutils literal notranslate"><span class="pre">group_number</span> <span class="pre">=</span> <span class="pre">N</span></code>
+puts the Verification System’s ROS topics under the namespace <code class="docutils literal notranslate"><span class="pre">/G&lt;N&gt;/</span></code>, adds a <code class="docutils literal notranslate"><span class="pre">_N</span></code>
+suffix to the LSL stream names (e.g. <code class="docutils literal notranslate"><span class="pre">ActualStates_5</span></code>), and selects the group’s row
+in <code class="docutils literal notranslate"><span class="pre">criteria.yaml</span></code>. The web ports stay fixed (HTTP 8000, WS 9090). <code class="docutils literal notranslate"><span class="pre">group_number</span> <span class="pre">0</span></code>
+is the default: namespace <code class="docutils literal notranslate"><span class="pre">/G0/</span></code>, no LSL suffix, and the <code class="docutils literal notranslate"><span class="pre">default</span></code> criteria.</p>
+</dd>
+<dt>Units</dt><dd><p>Position in <strong>radians (rad)</strong>, velocity in <strong>rad/s</strong>, acceleration in <strong>rad/s²</strong>.
+An <strong>index</strong> is a hole number on the plate: 1 index = 360 / 72 = <strong>5°</strong>. A <strong>degree</strong>
+is the plain angle. Sign convention: <strong>+ = counter-clockwise (CCW)</strong>, <strong>− = clockwise
+(CW)</strong>.</p>
+</dd>
+<dt>Settling band / settling time / overshoot</dt><dd><p>The <strong>settling band</strong> is a small window around the target (a % of the travel distance).
+The <strong>settling time</strong> is how long the robot takes to enter and stay in that band. The
+<strong>overshoot</strong> is how far the robot passes the target before coming back, as a % of the
+travel distance.</p>
+</dd>
+</dl>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="index.html" class="btn btn-neutral float-left" title="FRA263/4 Demo Software Development for developers" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="get_started.html" class="btn btn-neutral float-right" title="Getting Started" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2026, Institute of Field Robotics.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

@@ -1,0 +1,999 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.18.1: http://docutils.sourceforge.net/" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Web Visualizer Node &mdash; FRA263 Software 0.1 documentation</title>
+      <link rel="stylesheet" href="../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../_static/css/theme.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script src="../_static/jquery.js?v=5d32c60e"></script>
+        <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+        <script data-url_root="../" id="documentation_options" src="../_static/documentation_options.js?v=e031e9a9"></script>
+        <script src="../_static/doctools.js?v=888ff710"></script>
+        <script src="../_static/sphinx_highlight.js?v=4825356b"></script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../index.html" class="icon icon-home">
+            FRA263 Software
+          </a>
+              <div class="version">
+                0.1.0
+              </div>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+<li class="toctree-l1"><a class="reference internal" href="../system_overview.html">System Architecture &amp; Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../get_started.html">Getting Started</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Base%20System.html">Base System</a></li>
+<li class="toctree-l1"><a class="reference internal" href="verification_system.html">Verification System Implementation</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">FRA263 Software</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Web Visualizer Node</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/verification_system/web_visualizer_node.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="web-visualizer-node">
+<h1>Web Visualizer Node<a class="headerlink" href="#web-visualizer-node" title="Permalink to this heading"></a></h1>
+<p><strong>LSL ↔ ROS 2 Bridge and a Web Server</strong></p>
+<p>This node is the connector of the Verification System. It links three worlds that cannot
+talk to each other directly: <strong>LSL</strong> (the Base System’s streams), <strong>ROS 2</strong> (the
+verification pipeline), and the <strong>browser</strong> (the verifier dashboard). It is one process
+(node name <code class="docutils literal notranslate"><span class="pre">web_visualizer</span></code>) that runs <strong>five workers</strong> — five threads, one of which
+runs an asyncio event loop — side by side. Together they carry four data flows, plus one
+command flow coming back from the browser:</p>
+<ol class="arabic simple">
+<li><p><strong>ROS → LSL</strong> : <code class="docutils literal notranslate"><span class="pre">/estimated_states</span></code> → LSL outlet <code class="docutils literal notranslate"><span class="pre">EstimatedStates</span></code> — the robot side
+can read the filtered states back.</p></li>
+<li><p><strong>LSL → ROS</strong> : LSL inlet <code class="docutils literal notranslate"><span class="pre">ActualStates</span></code> → <code class="docutils literal notranslate"><span class="pre">/actual_states</span></code>.</p></li>
+<li><p><strong>LSL → ROS</strong> : LSL inlet <code class="docutils literal notranslate"><span class="pre">EventTrigger</span></code> → <code class="docutils literal notranslate"><span class="pre">/event_trigger</span></code>.</p></li>
+<li><p><strong>ROS → WebSocket</strong> : every topic above (plus the evaluator’s results) → JSON to the
+browser.</p></li>
+<li><p><strong>Command flow</strong> : the browser sends commands (zero, stop, skip, criteria update,
+sync) back over the same WebSocket.</p></li>
+</ol>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>[ from Base System ]                                          [ to robot side ]
+LSL &quot;ActualStates&quot;  ──────▶ ┌─────────────────────────┐ ────▶ LSL &quot;EstimatedStates&quot;
+                            |                         |
+LSL &quot;EventTrigger&quot;  ──────▶ │                         │       [ to other ROS 2 nodes ]
+                            │     web_visualizer      │ ────▶ /actual_states         (pub)
+[ from other ROS 2 nodes ]  │                         │ ────▶ /event_trigger         (pub)
+/estimated_states  ───────▶ │   LSL ↔ ROS 2 bridge    │ ────▶ /zero_estimated_states (pub)
+/actual_states     ───────▶ │      + web server       │ ────▶ update_criteria (service call)
+/event_trigger     ───────▶ │                         │
+/eval_live         ───────▶ │                         │        [ to browser ]
+/eval_summary      ───────▶ │                         │ ────▶ HTTP :8000      (dashboard files)
+                            └─────────────────────────┘ ◀───▶ WebSocket :9090 (JSON ⇵ commands)
+</pre></div>
+</div>
+<p><strong>Parameters.</strong> All set in <code class="docutils literal notranslate"><span class="pre">params.yaml</span></code>:</p>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 34%" />
+<col style="width: 18%" />
+<col style="width: 48%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Parameter</p></th>
+<th class="head"><p>Value</p></th>
+<th class="head"><p>Meaning</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">ws_port</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">9090</span></code></p></td>
+<td><p>Port of the WebSocket server (live JSON to the browser, commands back).</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">http_port</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">8000</span></code></p></td>
+<td><p>Port of the HTTP file server (the dashboard page itself).</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">ws_host</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;0.0.0.0&quot;</span></code></p></td>
+<td><p>Listen on every network interface, so another machine on the LAN can open the page.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">group_number</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;0&quot;</span></code></p></td>
+<td><p>Multi-group isolation. Group <code class="docutils literal notranslate"><span class="pre">N</span></code> adds the suffix <code class="docutils literal notranslate"><span class="pre">_N</span></code> to every LSL stream name
+<strong>and</strong> its <code class="docutils literal notranslate"><span class="pre">source_id</span></code>; <code class="docutils literal notranslate"><span class="pre">&quot;0&quot;</span></code> or <code class="docutils literal notranslate"><span class="pre">&quot;&quot;</span></code> = no suffix.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">lsl_params.resolve_timeout_s</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">5.0</span></code></p></td>
+<td><p>How long one attempt to find (resolve) an LSL stream on the network may take.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">lsl_params.actual_states_stream.name</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;ActualStates&quot;</span></code></p></td>
+<td><p>Name of the LSL inlet carrying the robot’s actual states.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">lsl_params.event_trigger_stream.name</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;EventTrigger&quot;</span></code></p></td>
+<td><p>Name of the LSL inlet carrying one message per user action.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">lsl_params.estimated_states_stream.*</span></code></p></td>
+<td><p>see meaning</p></td>
+<td><p>The LSL outlet: name <code class="docutils literal notranslate"><span class="pre">EstimatedStates</span></code>, 3 float channels (position, velocity,
+acceleration), REGULAR rate <strong>500 Hz</strong>, <code class="docutils literal notranslate"><span class="pre">source_id</span></code> <code class="docutils literal notranslate"><span class="pre">web_visualizer</span></code>.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">topics.*</span></code></p></td>
+<td><p>relative names</p></td>
+<td><p>The ROS topic names the node uses: <code class="docutils literal notranslate"><span class="pre">actual_states</span></code>, <code class="docutils literal notranslate"><span class="pre">event_trigger</span></code>,
+<code class="docutils literal notranslate"><span class="pre">estimated_states</span></code>.</p></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Interfaces.</strong> This node has many interfaces, so they are grouped by kind:</p>
+<ul class="simple">
+<li><p><strong>ROS 2 subscriptions (5):</strong></p>
+<ul>
+<li><p><code class="docutils literal notranslate"><span class="pre">/estimated_states</span></code> (<code class="docutils literal notranslate"><span class="pre">EncoderState</span></code>) — the State Estimator’s output; pushed to the
+LSL outlet and broadcast to the browser.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">/actual_states</span></code> (<code class="docutils literal notranslate"><span class="pre">ActualStates</span></code>) — broadcast to the browser.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">/event_trigger</span></code> (<code class="docutils literal notranslate"><span class="pre">EventTrigger</span></code>) — broadcast to the browser.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">/eval_live</span></code>, <code class="docutils literal notranslate"><span class="pre">/eval_summary</span></code> (<code class="docutils literal notranslate"><span class="pre">ExperimentEval</span></code>) — the evaluator’s live metrics
+and final summary; broadcast to the browser.</p></li>
+</ul>
+</li>
+<li><p><strong>ROS 2 publishers (3):</strong></p>
+<ul>
+<li><p><code class="docutils literal notranslate"><span class="pre">/actual_states</span></code> — built from the LSL <code class="docutils literal notranslate"><span class="pre">ActualStates</span></code> samples.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">/event_trigger</span></code> — built from the LSL <code class="docutils literal notranslate"><span class="pre">EventTrigger</span></code> samples, and also from
+browser commands (stop, skip).</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">/zero_estimated_states</span></code> (<code class="docutils literal notranslate"><span class="pre">std_msgs/Empty</span></code>) — the “re-zero” signal to the State
+Estimator node.</p></li>
+</ul>
+</li>
+<li><p><strong>ROS 2 service client (1):</strong> <code class="docutils literal notranslate"><span class="pre">update_criteria</span></code> (<code class="docutils literal notranslate"><span class="pre">UpdateCriteria</span></code>) — reads and
+updates the evaluator’s pass/fail criteria.</p></li>
+<li><p><strong>LSL (2 inlets, 1 outlet):</strong> inlets <code class="docutils literal notranslate"><span class="pre">ActualStates</span></code> and <code class="docutils literal notranslate"><span class="pre">EventTrigger</span></code>; outlet
+<code class="docutils literal notranslate"><span class="pre">EstimatedStates</span></code>.</p></li>
+<li><p><strong>Web (2 servers):</strong> HTTP on port 8000 (dashboard files + <code class="docutils literal notranslate"><span class="pre">/config.json</span></code>) and
+WebSocket on port 9090 (live JSON down, commands up).</p></li>
+</ul>
+<p>Note that <code class="docutils literal notranslate"><span class="pre">/actual_states</span></code> and <code class="docutils literal notranslate"><span class="pre">/event_trigger</span></code> appear as <strong>both</strong> a publisher and a
+subscription on purpose — the reason is explained in the Node Workflow section. As in the
+other nodes, topic names are <strong>relative</strong>, so the launch namespace <code class="docutils literal notranslate"><span class="pre">/G&lt;N&gt;/</span></code> is added in
+front, and the QoS profile is <strong>RELIABLE</strong> with <strong>KEEP_LAST depth 10</strong>.</p>
+<p><strong>JSON wire format.</strong> Every message to the browser uses one envelope shape — a
+<code class="docutils literal notranslate"><span class="pre">topic</span></code> name plus a <code class="docutils literal notranslate"><span class="pre">data</span></code> object holding the fields of the ROS message:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>{&quot;topic&quot;: &quot;estimated_states&quot;,
+ &quot;data&quot;: {&quot;stamp&quot;: 1721.4, &quot;position&quot;: 0.52, &quot;velocity&quot;: 1.10, &quot;acceleration&quot;: 0.03, ...}}
+</pre></div>
+</div>
+<p>The node keeps a cache (the stored last message of every topic). A browser that connects
+late immediately receives that snapshot, so the dashboard never starts empty.</p>
+<section id="why-lsl">
+<h2>Why LSL?<a class="headerlink" href="#why-lsl" title="Permalink to this heading"></a></h2>
+<p>The developed Base System is not developed on the ROS framework. Originally, LSL is famous
+in the Brain-Computer Interface (BCI) field which need to handle a lot of time series signal
+in real-time. Therefore, the LSL is selected to be the broadcasting tool for the Base System.</p>
+<hr class="docutils" />
+<section id="node-workflow">
+<h3>Node Workflow<a class="headerlink" href="#node-workflow" title="Permalink to this heading"></a></h3>
+<p>The constructor does not process any data itself — it starts the five workers and then
+hands its own thread to <code class="docutils literal notranslate"><span class="pre">rclpy.spin</span></code>. Each worker has one job, and they meet in two
+places: <strong>ROS topics</strong> (where data enters the ROS world) and the <strong>WebSocket broadcast</strong>
+(where data leaves to the browser). Each worker below is roughly the size of the whole
+State Estimator node, so take them one at a time.</p>
+</section>
+</section>
+<section id="the-big-picture">
+<h2>The big picture<a class="headerlink" href="#the-big-picture" title="Permalink to this heading"></a></h2>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>[thread: lsl-actual-states]                          (Flow 2 — LSL → ROS)
+LSL inlet &quot;ActualStates&quot; ──pull──▶ deg2rad, apply offset ──▶ publish to /actual_states
+
+──────────────────────────────────────────────────────────────────────────────────────
+
+[thread: lsl-event-trigger]                          (Flow 3 — LSL → ROS)
+LSL inlet &quot;EventTrigger&quot; ──pull──▶ parse the JSON string ──▶ publish to /event_trigger
+
+──────────────────────────────────────────────────────────────────────────────────────
+
+[thread: main — rclpy.spin]                          (Flow 1 + Flow 4 — the fan-out hub)
+/estimated_states ──▶ _estimated_states_cb ──┬─▶ push LSL outlet &quot;EstimatedStates&quot;
+                                             └─▶ broadcast
+/actual_states    ──▶ _actual_states_cb  ──────▶ broadcast
+/event_trigger    ──▶ _event_trigger_cb  ──────▶ broadcast
+/eval_live        ──▶ _eval_live_cb      ──────▶ broadcast
+/eval_summary     ──▶ _eval_summary_cb   ──────▶ broadcast
+
+──────────────────────────────────────────────────────────────────────────────────────
+
+[thread: ws-server — the asyncio event loop]        (Flow 4 + the command flow)
+broadcast ──▶ send the JSON envelope to every connected browser
+browser command ──▶ _handle_command ──▶ publish / service call / change offset
+
+──────────────────────────────────────────────────────────────────────────────────────
+
+[thread: http-server]
+browser GET :8000 ──▶ dashboard files ;  GET /config.json ──▶ {&quot;ws_port&quot;: 9090}
+</pre></div>
+</div>
+<p>All five threads run at the same time. The two LSL workers feed data <strong>into</strong> ROS; the
+main thread fans everything <strong>out</strong> of ROS; the WebSocket thread owns the browser
+connections; the HTTP thread only serves files.</p>
+</section>
+<section id="ros-callback-worker-the-fan-out-hub">
+<h2>ROS callback worker (the fan-out hub)<a class="headerlink" href="#ros-callback-worker-the-fan-out-hub" title="Permalink to this heading"></a></h2>
+<p>The main thread sits in <code class="docutils literal notranslate"><span class="pre">rclpy.spin</span></code> and runs the five subscription callbacks. Every
+callback does the same small job: serialize the ROS message into the JSON envelope and
+hand it to <code class="docutils literal notranslate"><span class="pre">_broadcast</span></code>. Only <code class="docutils literal notranslate"><span class="pre">_estimated_states_cb</span></code> has a second job — it also pushes
+<code class="docutils literal notranslate"><span class="pre">[position,</span> <span class="pre">velocity,</span> <span class="pre">acceleration]</span></code> into the LSL outlet <code class="docutils literal notranslate"><span class="pre">EstimatedStates</span></code> so the
+robot side can read the filtered states.</p>
+<p>The key design decision here: the LSL workers <strong>publish into ROS and never broadcast
+directly</strong>. Because the node subscribes to <code class="docutils literal notranslate"><span class="pre">/actual_states</span></code> and <code class="docutils literal notranslate"><span class="pre">/event_trigger</span></code> —
+the same topics it publishes — every message passes through a subscription callback on
+its way to the browser. The result is a single broadcast path: it does not matter whether
+a message was produced by the LSL worker, by <code class="docutils literal notranslate"><span class="pre">mock_ui</span></code>, or by a future robot node — it
+reaches the browser the same way.</p>
+</section>
+<section id="lsl-inlet-workers">
+<h2>LSL inlet workers<a class="headerlink" href="#lsl-inlet-workers" title="Permalink to this heading"></a></h2>
+<p>The two LSL threads (<code class="docutils literal notranslate"><span class="pre">lsl-actual-states</span></code> and <code class="docutils literal notranslate"><span class="pre">lsl-event-trigger</span></code>) run the same loop
+shape; only the message building differs:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>inlet = None
+     │
+     ▼
+while the stop flag is not set:
+     │
+     ├─ inlet is None?  ──▶ resolve the stream by name (timeout 5 s)
+     │                      not found → warn, try again next pass
+     │
+     ├─ pull one sample from the inlet (timeout 1 s)
+     │      error   → drop the inlet, re-resolve next pass
+     │      nothing → loop again
+     │
+     └─ sample arrived:
+            build the ROS message  ──▶  publish
+            (no WS broadcast here — the subscription callback does it)
+</pre></div>
+</div>
+<p>The re-resolve step makes the workers self-healing: if the Base System restarts, the old
+inlet fails, the worker throws it away, and the next pass finds the new stream. The
+differences between the two workers:</p>
+<ul class="simple">
+<li><p><strong>ActualStates</strong> — a sample is 3 floats. The position arrives in degrees, so it is
+converted to radians and the local actual-side offset (<code class="docutils literal notranslate"><span class="pre">_actual_pos_offset_rad</span></code>) is
+subtracted before publishing <code class="docutils literal notranslate"><span class="pre">/actual_states</span></code>.</p></li>
+<li><p><strong>EventTrigger</strong> — a sample is 1 string containing JSON. It is parsed (with a fallback
+for a plain string) and re-packed into the <code class="docutils literal notranslate"><span class="pre">event</span></code> field of <code class="docutils literal notranslate"><span class="pre">/event_trigger</span></code>.</p></li>
+</ul>
+</section>
+<section id="websocket-server-worker">
+<h2>WebSocket server worker<a class="headerlink" href="#websocket-server-worker" title="Permalink to this heading"></a></h2>
+<p>This thread runs its own <strong>asyncio event loop</strong> — a scheduler that serves many browser
+connections in one thread. Each new connection goes through the same steps:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>browser connects to ws://&lt;host&gt;:9090
+     │
+     ▼
+replay the cached last message of every topic     (instant picture)
+     │
+     ▼
+send the criteria snapshot                        (service call to the evaluator)
+     │
+     ▼
+add the client to the broadcast set
+     │
+     ▼
+wait for messages from the browser ──▶ _handle_command(...)
+     │ connection closed
+     ▼
+remove the client from the broadcast set
+</pre></div>
+</div>
+<p>Outgoing data crosses a thread boundary here: the ROS callbacks run in the main thread,
+but the WebSocket objects live in this thread’s event loop. <code class="docutils literal notranslate"><span class="pre">_broadcast</span></code> bridges the
+two safely with <code class="docutils literal notranslate"><span class="pre">asyncio.run_coroutine_threadsafe</span></code> — it hands the send job <strong>to</strong> the
+event loop instead of touching the sockets from the wrong thread. This is what makes the
+broadcast thread-safe.</p>
+</section>
+<section id="http-server-worker">
+<h2>HTTP server worker<a class="headerlink" href="#http-server-worker" title="Permalink to this heading"></a></h2>
+<p>The simplest worker. It serves the dashboard files (HTML/JS/CSS installed in the
+package’s <code class="docutils literal notranslate"><span class="pre">web/</span></code> folder) on port 8000, using Python’s built-in file server. It answers
+one special path itself: <code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/config.json</span></code> returns <code class="docutils literal notranslate"><span class="pre">{&quot;ws_port&quot;:</span> <span class="pre">9090}</span></code>, so the
+browser can discover the right WebSocket port from the same machine that served the page
+— no hardcoded port in the JavaScript.</p>
+</section>
+<hr class="docutils" />
+<section id="browser-commands">
+<h2>Browser commands<a class="headerlink" href="#browser-commands" title="Permalink to this heading"></a></h2>
+<p>Commands arrive as JSON over the WebSocket and are handled by <code class="docutils literal notranslate"><span class="pre">_handle_command</span></code> (a
+dispatcher — one <code class="docutils literal notranslate"><span class="pre">if/elif</span></code> chain keyed on the <code class="docutils literal notranslate"><span class="pre">command</span></code> field):</p>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 24%" />
+<col style="width: 76%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Command</p></th>
+<th class="head"><p>What the node does</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">time_sync</span></code></p></td>
+<td><p>Replies with the node’s current ROS time, so the browser can align its chart
+timestamps with the data stamps.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">stop_experiment</span></code></p></td>
+<td><p>Publishes an <code class="docutils literal notranslate"><span class="pre">EventTrigger</span></code> with <code class="docutils literal notranslate"><span class="pre">{&quot;mode&quot;:</span> <span class="pre">&quot;STOP&quot;,</span> <span class="pre">&quot;action&quot;:</span> <span class="pre">&quot;stop&quot;}</span></code> — the
+evaluator sees it and ends the run.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">skip_iteration</span></code></p></td>
+<td><p>Publishes an <code class="docutils literal notranslate"><span class="pre">EventTrigger</span></code> with <code class="docutils literal notranslate"><span class="pre">{&quot;action&quot;:</span> <span class="pre">&quot;skip_iteration&quot;}</span></code> — the evaluator
+drops the stuck waypoint / trial.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">criteria_update</span></code></p></td>
+<td><p>Calls the <code class="docutils literal notranslate"><span class="pre">update_criteria</span></code> service with the new limits, then broadcasts a
+<code class="docutils literal notranslate"><span class="pre">criteria_ack</span></code> to <strong>every</strong> browser so all open dashboards stay in sync.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">pos_sync</span></code></p></td>
+<td><p>Adds <code class="docutils literal notranslate"><span class="pre">delta_rad</span></code> to the actual-side position offset.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">zero_set</span></code></p></td>
+<td><p>Two sides at once. Estimated side: publishes <code class="docutils literal notranslate"><span class="pre">Empty</span></code> on
+<code class="docutils literal notranslate"><span class="pre">/zero_estimated_states</span></code> so the State Estimator re-zeros at the source. Actual
+side: adds the current actual position to the local offset, because
+<code class="docutils literal notranslate"><span class="pre">/actual_states</span></code> is produced inside this node.</p></td>
+</tr>
+</tbody>
+</table>
+<hr class="docutils" />
+<section id="examine-the-code">
+<h3>Examine the code<a class="headerlink" href="#examine-the-code" title="Permalink to this heading"></a></h3>
+<p>The full node lives in <code class="docutils literal notranslate"><span class="pre">scripts/web_visualizer.py</span></code> (about 600 lines). This section walks
+through every mechanism, but compresses the repeated parts: only one of the four JSON
+serializers is shown, the parameter block is covered by the table above, and commented-out
+legacy lines are trimmed from the excerpts.</p>
+<p><strong>Imports.</strong></p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">functools</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">http.server</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">json</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">math</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">threading</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">ament_index_python.packages</span><span class="w"> </span><span class="kn">import</span> <span class="n">get_package_share_directory</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">rclpy</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">rclpy.node</span><span class="w"> </span><span class="kn">import</span> <span class="n">Node</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">rclpy.qos</span><span class="w"> </span><span class="kn">import</span> <span class="n">QoSProfile</span><span class="p">,</span> <span class="n">ReliabilityPolicy</span><span class="p">,</span> <span class="n">HistoryPolicy</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">pylsl</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">websockets</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">std_msgs.msg</span><span class="w"> </span><span class="kn">import</span> <span class="n">Empty</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">claude_visualizer_interface.msg</span><span class="w"> </span><span class="kn">import</span> <span class="n">EncoderState</span><span class="p">,</span> <span class="n">ActualStates</span><span class="p">,</span> <span class="n">EventTrigger</span><span class="p">,</span> <span class="n">ExperimentEval</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">claude_visualizer_interface.srv</span><span class="w"> </span><span class="kn">import</span> <span class="n">UpdateCriteria</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">claude_visualizer.utils</span><span class="w"> </span><span class="kn">import</span> <span class="n">create_outlet</span>
+</pre></div>
+</div>
+<p>This node talks to everything, so it needs more libraries than the others: <code class="docutils literal notranslate"><span class="pre">asyncio</span></code> +
+<code class="docutils literal notranslate"><span class="pre">websockets</span></code> for the WebSocket server, <code class="docutils literal notranslate"><span class="pre">http.server</span></code> for the file server,
+<code class="docutils literal notranslate"><span class="pre">threading</span></code> for the workers, <code class="docutils literal notranslate"><span class="pre">pylsl</span></code> for the LSL inlets/outlet, and
+<code class="docutils literal notranslate"><span class="pre">get_package_share_directory</span></code> to find the installed <code class="docutils literal notranslate"><span class="pre">web/</span></code> folder. From the project’s
+interface package it uses four message types and the <code class="docutils literal notranslate"><span class="pre">UpdateCriteria</span></code> service, plus the
+<code class="docutils literal notranslate"><span class="pre">create_outlet</span></code> helper that builds an LSL outlet from a settings dictionary.</p>
+<p><strong>Serializers — ROS message → JSON envelope.</strong></p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">def</span><span class="w"> </span><span class="nf">_stamp_to_sec</span><span class="p">(</span><span class="n">stamp</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">float</span><span class="p">:</span>
+    <span class="k">return</span> <span class="n">stamp</span><span class="o">.</span><span class="n">sec</span> <span class="o">+</span> <span class="n">stamp</span><span class="o">.</span><span class="n">nanosec</span> <span class="o">*</span> <span class="mf">1e-9</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">estimated_states_to_json</span><span class="p">(</span><span class="n">msg</span><span class="p">:</span> <span class="n">EncoderState</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+    <span class="k">return</span> <span class="p">{</span>
+        <span class="s2">&quot;topic&quot;</span><span class="p">:</span> <span class="s2">&quot;estimated_states&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;data&quot;</span><span class="p">:</span> <span class="p">{</span>
+            <span class="s2">&quot;stamp&quot;</span><span class="p">:</span>        <span class="n">_stamp_to_sec</span><span class="p">(</span><span class="n">msg</span><span class="o">.</span><span class="n">header</span><span class="o">.</span><span class="n">stamp</span><span class="p">),</span>
+            <span class="s2">&quot;position&quot;</span><span class="p">:</span>     <span class="n">msg</span><span class="o">.</span><span class="n">position</span><span class="p">,</span>
+            <span class="s2">&quot;velocity&quot;</span><span class="p">:</span>     <span class="n">msg</span><span class="o">.</span><span class="n">velocity</span><span class="p">,</span>
+            <span class="s2">&quot;acceleration&quot;</span><span class="p">:</span> <span class="n">msg</span><span class="o">.</span><span class="n">acceleration</span><span class="p">,</span>
+            <span class="s2">&quot;pos_variance&quot;</span><span class="p">:</span> <span class="n">msg</span><span class="o">.</span><span class="n">pos_variance</span><span class="p">,</span>
+            <span class="s2">&quot;vel_variance&quot;</span><span class="p">:</span> <span class="n">msg</span><span class="o">.</span><span class="n">vel_variance</span><span class="p">,</span>
+            <span class="s2">&quot;acc_variance&quot;</span><span class="p">:</span> <span class="n">msg</span><span class="o">.</span><span class="n">acc_variance</span><span class="p">,</span>
+            <span class="s2">&quot;raw_ticks&quot;</span><span class="p">:</span>    <span class="n">msg</span><span class="o">.</span><span class="n">raw_ticks</span><span class="p">,</span>
+        <span class="p">},</span>
+    <span class="p">}</span>
+</pre></div>
+</div>
+<p>A ROS time stamp is two integers (seconds + nanoseconds); <code class="docutils literal notranslate"><span class="pre">_stamp_to_sec</span></code> folds them
+into one float that JavaScript can use directly. The serializer copies the message fields
+into the <code class="docutils literal notranslate"><span class="pre">{&quot;topic&quot;:</span> <span class="pre">...,</span> <span class="pre">&quot;data&quot;:</span> <span class="pre">...}</span></code> envelope. There are three more serializers with
+exactly the same shape — <code class="docutils literal notranslate"><span class="pre">actual_states_to_json</span></code>, <code class="docutils literal notranslate"><span class="pre">event_trigger_to_json</span></code>, and
+<code class="docutils literal notranslate"><span class="pre">_eval_to_json</span></code>. The last two also <code class="docutils literal notranslate"><span class="pre">json.loads</span></code> the JSON string embedded in the
+message, with a fallback, so one malformed string cannot crash the pipeline.</p>
+<p><strong>The HTTP handler and</strong> <code class="docutils literal notranslate"><span class="pre">/config.json</span></code>.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">class</span><span class="w"> </span><span class="nc">_SilentHTTPHandler</span><span class="p">(</span><span class="n">http</span><span class="o">.</span><span class="n">server</span><span class="o">.</span><span class="n">SimpleHTTPRequestHandler</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">log_message</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">):</span> <span class="k">pass</span>
+
+    <span class="c1"># Serve the runtime WebSocket port to the browser so app.js no longer needs a</span>
+    <span class="c1"># hardcoded port. ws_port is attached to the server object in _run_http_server.</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">do_GET</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">path</span> <span class="o">==</span> <span class="s2">&quot;/config.json&quot;</span><span class="p">:</span>
+            <span class="n">body</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">({</span><span class="s2">&quot;ws_port&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">server</span><span class="o">.</span><span class="n">ws_port</span><span class="p">})</span><span class="o">.</span><span class="n">encode</span><span class="p">()</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">send_response</span><span class="p">(</span><span class="mi">200</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">send_header</span><span class="p">(</span><span class="s2">&quot;Content-Type&quot;</span><span class="p">,</span> <span class="s2">&quot;application/json&quot;</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">send_header</span><span class="p">(</span><span class="s2">&quot;Content-Length&quot;</span><span class="p">,</span> <span class="nb">str</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">body</span><span class="p">)))</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">end_headers</span><span class="p">()</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">wfile</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">body</span><span class="p">)</span>
+            <span class="k">return</span>
+        <span class="k">return</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">do_GET</span><span class="p">()</span>
+</pre></div>
+</div>
+<p>A small subclass of Python’s built-in file handler. <code class="docutils literal notranslate"><span class="pre">log_message</span></code> is overridden to
+silence the one-line-per-request console spam. <code class="docutils literal notranslate"><span class="pre">do_GET</span></code> intercepts exactly one path:
+<code class="docutils literal notranslate"><span class="pre">/config.json</span></code> is answered by the handler itself with the runtime WebSocket port; every
+other path falls through to normal file serving. This is how the browser finds the
+WebSocket server without a hardcoded port in the JavaScript.</p>
+<p><strong>Constructor — the group suffix.</strong> The parameter declarations follow the same
+<code class="docutils literal notranslate"><span class="pre">declare_parameter</span></code> / <code class="docutils literal notranslate"><span class="pre">get_parameter</span></code> pattern as the State Estimator (values in the
+table above), so the excerpt starts at the interesting part:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">group_number</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">get_parameter</span><span class="p">(</span><span class="s2">&quot;group_number&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">value</span> <span class="ow">or</span> <span class="s2">&quot;&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+<span class="n">_suf</span> <span class="o">=</span> <span class="p">(</span><span class="k">lambda</span> <span class="n">n</span><span class="p">:</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">n</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">group_number</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span> <span class="k">if</span> <span class="n">group_number</span> <span class="ow">and</span> <span class="n">group_number</span> <span class="o">!=</span> <span class="s2">&quot;0&quot;</span> <span class="k">else</span> <span class="p">(</span><span class="k">lambda</span> <span class="n">n</span><span class="p">:</span> <span class="n">n</span><span class="p">)</span>
+<span class="n">actual_states_stream</span>  <span class="o">=</span> <span class="n">_suf</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">get_parameter</span><span class="p">(</span><span class="s2">&quot;lsl_params.actual_states_stream.name&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">value</span><span class="p">)</span>
+<span class="n">event_trigger_stream</span>  <span class="o">=</span> <span class="n">_suf</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">get_parameter</span><span class="p">(</span><span class="s2">&quot;lsl_params.event_trigger_stream.name&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">value</span><span class="p">)</span>
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">_suf</span></code> is a tiny helper function: for group <code class="docutils literal notranslate"><span class="pre">N</span></code> (not <code class="docutils literal notranslate"><span class="pre">0</span></code>) it turns a stream name
+into <code class="docutils literal notranslate"><span class="pre">name_N</span></code>; for group 0 it changes nothing. It is applied to both inlet names here,
+and later to the outlet’s name <strong>and</strong> <code class="docutils literal notranslate"><span class="pre">source_id</span></code>. This is the whole multi-group
+mechanism on the LSL side — each verifier resolves only its own robot’s streams, even on
+a shared LAN.</p>
+<p><strong>Constructor — WebSocket state and starting the threads.</strong></p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="c1"># ── WebSocket server state ──────────────────────────────────────────</span>
+<span class="bp">self</span><span class="o">.</span><span class="n">_ws_clients</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>                 <span class="c1"># touched only by ws thread&#39;s loop</span>
+<span class="bp">self</span><span class="o">.</span><span class="n">_ws_last_messages</span> <span class="o">=</span> <span class="p">{}</span>              <span class="c1"># topic → last serialized JSON str</span>
+
+<span class="bp">self</span><span class="o">.</span><span class="n">_ws_loop_scheduler</span> <span class="o">=</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">new_event_loop</span><span class="p">()</span>
+<span class="c1">#functionally, the AbstractEventLoop acts as a scheduler for asynchronous tasks.</span>
+<span class="c1">#However, it is called a &quot;loop&quot; because its internal mechanism is literally</span>
+<span class="c1">#a continuous while loop that keeps the program alive.</span>
+
+<span class="bp">self</span><span class="o">.</span><span class="n">_ws_thread_exec</span> <span class="o">=</span> <span class="n">threading</span><span class="o">.</span><span class="n">Event</span><span class="p">()</span>
+<span class="bp">self</span><span class="o">.</span><span class="n">_ws_thread</span> <span class="o">=</span> <span class="n">threading</span><span class="o">.</span><span class="n">Thread</span><span class="p">(</span>
+    <span class="n">target</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_run_ws_loop</span><span class="p">,</span> <span class="n">daemon</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s2">&quot;ws-server&quot;</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="bp">self</span><span class="o">.</span><span class="n">_ws_thread</span><span class="o">.</span><span class="n">start</span><span class="p">()</span>
+<span class="bp">self</span><span class="o">.</span><span class="n">_ws_thread_exec</span><span class="o">.</span><span class="n">wait</span><span class="p">()</span>
+
+<span class="bp">self</span><span class="o">.</span><span class="n">_http_thread</span> <span class="o">=</span> <span class="n">threading</span><span class="o">.</span><span class="n">Thread</span><span class="p">(</span>
+    <span class="n">target</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_run_http_server</span><span class="p">,</span> <span class="n">daemon</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s2">&quot;http-server&quot;</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="bp">self</span><span class="o">.</span><span class="n">_http_thread</span><span class="o">.</span><span class="n">start</span><span class="p">()</span>
+</pre></div>
+</div>
+<p>Two shared pieces of state first: the set of connected clients and the last-message cache.
+<code class="docutils literal notranslate"><span class="pre">asyncio.new_event_loop()</span></code> creates the event loop but does not run it — running it is
+the ws thread’s job. Then comes a <strong>handshake</strong> with <code class="docutils literal notranslate"><span class="pre">threading.Event</span></code>: the constructor
+starts the ws thread and immediately blocks on <code class="docutils literal notranslate"><span class="pre">wait()</span></code>; the ws thread calls <code class="docutils literal notranslate"><span class="pre">set()</span></code>
+only after the WebSocket server is actually listening. This guarantees the order — nothing
+later in the constructor can try to broadcast before the server exists. The HTTP server
+gets its own thread because <code class="docutils literal notranslate"><span class="pre">serve_forever</span></code> is blocking. Both threads are <code class="docutils literal notranslate"><span class="pre">daemon</span></code>
+threads, so they die automatically with the process.</p>
+<p><strong>Constructor — ROS wiring.</strong></p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="c1"># ── Estimated States data flow: ROS → LSL (subscribe to /estimated_states, push to LSL) ────</span>
+<span class="bp">self</span><span class="o">.</span><span class="n">_estimated_states_outlet</span> <span class="o">=</span> <span class="n">create_outlet</span><span class="p">(</span><span class="n">estimated_states_lsl_stream_info</span><span class="p">,</span> <span class="n">pylsl</span><span class="o">.</span><span class="n">cf_float32</span><span class="p">)</span>
+<span class="bp">self</span><span class="o">.</span><span class="n">create_subscription</span><span class="p">(</span><span class="n">EncoderState</span><span class="p">,</span> <span class="n">topic_encoder</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_estimated_states_cb</span><span class="p">,</span> <span class="n">qos</span><span class="p">)</span>
+
+<span class="c1"># ── Actual States and Trigger data flow: LSL → ROS (pull from LSL inlet, publish to ROS) ─────</span>
+<span class="bp">self</span><span class="o">.</span><span class="n">_actual_states_pub</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">create_publisher</span><span class="p">(</span><span class="n">ActualStates</span><span class="p">,</span> <span class="n">actual_states_topic</span><span class="p">,</span> <span class="n">qos</span><span class="p">)</span>
+<span class="bp">self</span><span class="o">.</span><span class="n">_event_trigger_pub</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">create_publisher</span><span class="p">(</span><span class="n">EventTrigger</span><span class="p">,</span> <span class="n">event_trigger_topic</span><span class="p">,</span>  <span class="n">qos</span><span class="p">)</span>
+<span class="c1"># Tells the encoder_reader (Kalman) node to re-zero /estimated_states at the</span>
+<span class="c1"># source, so the evaluator + LSL outlet + WS all share one zeroed frame.</span>
+<span class="bp">self</span><span class="o">.</span><span class="n">_zero_estimated_pub</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">create_publisher</span><span class="p">(</span><span class="n">Empty</span><span class="p">,</span> <span class="s2">&quot;zero_estimated_states&quot;</span><span class="p">,</span> <span class="n">qos</span><span class="p">)</span>
+
+<span class="c1"># Also subscribe to these topics so that ANY publisher (our LSL worker</span>
+<span class="c1"># OR mock_encoder OR a future robot_controller ROS node) gets</span>
+<span class="c1"># broadcast to the WebSocket clients. LSL workers therefore do NOT</span>
+<span class="c1"># broadcast directly — the subscription callbacks do.</span>
+<span class="bp">self</span><span class="o">.</span><span class="n">create_subscription</span><span class="p">(</span><span class="n">ActualStates</span><span class="p">,</span>    <span class="n">actual_states_topic</span><span class="p">,</span>  <span class="bp">self</span><span class="o">.</span><span class="n">_actual_states_cb</span><span class="p">,</span>  <span class="n">qos</span><span class="p">)</span>
+<span class="bp">self</span><span class="o">.</span><span class="n">create_subscription</span><span class="p">(</span><span class="n">EventTrigger</span><span class="p">,</span>    <span class="n">event_trigger_topic</span><span class="p">,</span>  <span class="bp">self</span><span class="o">.</span><span class="n">_event_trigger_cb</span><span class="p">,</span>  <span class="n">qos</span><span class="p">)</span>
+<span class="bp">self</span><span class="o">.</span><span class="n">create_subscription</span><span class="p">(</span><span class="n">ExperimentEval</span><span class="p">,</span>  <span class="s2">&quot;eval_live&quot;</span><span class="p">,</span>          <span class="bp">self</span><span class="o">.</span><span class="n">_eval_live_cb</span><span class="p">,</span>      <span class="n">qos</span><span class="p">)</span>
+<span class="bp">self</span><span class="o">.</span><span class="n">create_subscription</span><span class="p">(</span><span class="n">ExperimentEval</span><span class="p">,</span>  <span class="s2">&quot;eval_summary&quot;</span><span class="p">,</span>       <span class="bp">self</span><span class="o">.</span><span class="n">_eval_summary_cb</span><span class="p">,</span>   <span class="n">qos</span><span class="p">)</span>
+
+<span class="c1"># Relative service name → resolves to /G&lt;N&gt;/update_criteria, matching the evaluator&#39;s server.</span>
+<span class="bp">self</span><span class="o">.</span><span class="n">_criteria_client</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">create_client</span><span class="p">(</span><span class="n">UpdateCriteria</span><span class="p">,</span> <span class="s2">&quot;update_criteria&quot;</span><span class="p">)</span>
+<span class="bp">self</span><span class="o">.</span><span class="n">_last_criteria_json</span> <span class="o">=</span> <span class="s2">&quot;</span><span class="si">{}</span><span class="s2">&quot;</span>
+
+<span class="c1"># Actual-side zero offset stays here because /actual_states is produced</span>
+<span class="c1"># locally (LSL worker). The estimated-side zero now lives in the Kalman</span>
+<span class="c1"># node so it applies upstream of every consumer.</span>
+<span class="bp">self</span><span class="o">.</span><span class="n">_actual_pos_offset_rad</span> <span class="o">=</span> <span class="mf">0.0</span>
+</pre></div>
+</div>
+<p>This block wires every flow. <code class="docutils literal notranslate"><span class="pre">create_outlet</span></code> builds the LSL outlet from the settings
+dictionary (Flow 1), and the publishers cover Flows 2 and 3 plus the re-zero signal. The
+comment in the middle explains the fan-out design: the node subscribes to the very topics
+it publishes, so the subscription callbacks are the <strong>only</strong> place that broadcasts to the
+browser. The criteria client uses a relative service name for the same namespace reason
+as the topics. Finally, the actual-side zero offset lives here (the actual data is
+produced in this node), while the estimated-side zero lives in the State Estimator.</p>
+<p><strong>Constructor — starting the LSL workers.</strong></p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="bp">self</span><span class="o">.</span><span class="n">_lsl_threads_exec</span> <span class="o">=</span> <span class="n">threading</span><span class="o">.</span><span class="n">Event</span><span class="p">()</span>
+<span class="bp">self</span><span class="o">.</span><span class="n">_lsl_threads</span> <span class="o">=</span> <span class="p">[</span>
+    <span class="n">threading</span><span class="o">.</span><span class="n">Thread</span><span class="p">(</span>
+        <span class="n">target</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_actual_states_worker</span><span class="p">,</span>
+        <span class="n">args</span><span class="o">=</span><span class="p">(</span><span class="n">actual_states_stream</span><span class="p">,</span> <span class="n">resolve_timeout</span><span class="p">),</span>
+        <span class="n">daemon</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s2">&quot;lsl-actual-states&quot;</span><span class="p">,</span>
+    <span class="p">),</span>
+    <span class="n">threading</span><span class="o">.</span><span class="n">Thread</span><span class="p">(</span>
+        <span class="n">target</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_event_trigger_worker</span><span class="p">,</span>
+        <span class="n">args</span><span class="o">=</span><span class="p">(</span><span class="n">event_trigger_stream</span><span class="p">,</span> <span class="n">resolve_timeout</span><span class="p">),</span>
+        <span class="n">daemon</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s2">&quot;lsl-event-trigger&quot;</span><span class="p">,</span>
+    <span class="p">),</span>
+<span class="p">]</span>
+<span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_lsl_threads</span><span class="p">:</span> <span class="c1">#activate all _lsl_threads to receive the stream</span>
+    <span class="n">t</span><span class="o">.</span><span class="n">start</span><span class="p">()</span>
+</pre></div>
+</div>
+<p>A second <code class="docutils literal notranslate"><span class="pre">threading.Event</span></code>, this time used as a <strong>stop flag</strong>: the worker loops run
+<code class="docutils literal notranslate"><span class="pre">while</span> <span class="pre">not</span> <span class="pre">self._lsl_threads_exec.is_set()</span></code>, so setting it later (in <code class="docutils literal notranslate"><span class="pre">destroy_node</span></code>)
+is how the node asks both loops to finish. Each worker gets its stream name (already
+suffixed by <code class="docutils literal notranslate"><span class="pre">_suf</span></code>) and the resolve timeout as arguments.</p>
+<p><strong>The HTTP server thread.</strong></p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">def</span><span class="w"> </span><span class="nf">_run_http_server</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+    <span class="n">web_dir</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span>
+        <span class="n">get_package_share_directory</span><span class="p">(</span><span class="s2">&quot;claude_visualizer&quot;</span><span class="p">),</span> <span class="s2">&quot;web&quot;</span>
+    <span class="p">)</span>
+    <span class="n">handler</span> <span class="o">=</span> <span class="n">functools</span><span class="o">.</span><span class="n">partial</span><span class="p">(</span><span class="n">_SilentHTTPHandler</span><span class="p">,</span> <span class="n">directory</span><span class="o">=</span><span class="n">web_dir</span><span class="p">)</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">_http_server</span> <span class="o">=</span> <span class="n">http</span><span class="o">.</span><span class="n">server</span><span class="o">.</span><span class="n">HTTPServer</span><span class="p">((</span><span class="s2">&quot;0.0.0.0&quot;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_http_port</span><span class="p">),</span> <span class="n">handler</span><span class="p">)</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">_http_server</span><span class="o">.</span><span class="n">ws_port</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ws_port</span>   <span class="c1"># exposed to the browser via GET /config.json</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">_http_server</span><span class="o">.</span><span class="n">serve_forever</span><span class="p">()</span>
+</pre></div>
+</div>
+<p>The dashboard files are installed into the package’s share directory, so
+<code class="docutils literal notranslate"><span class="pre">get_package_share_directory</span></code> finds them wherever the workspace lives.
+<code class="docutils literal notranslate"><span class="pre">functools.partial</span></code> pre-fills the <code class="docutils literal notranslate"><span class="pre">directory</span></code> argument of the handler class. The
+<code class="docutils literal notranslate"><span class="pre">ws_port</span></code> is attached to the server object — that is where the <code class="docutils literal notranslate"><span class="pre">/config.json</span></code> route
+reads it from. <code class="docutils literal notranslate"><span class="pre">serve_forever</span></code> then blocks this thread for the life of the node.</p>
+<p><strong>The WebSocket thread and its event loop.</strong></p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">def</span><span class="w"> </span><span class="nf">_run_ws_loop</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+    <span class="n">asyncio</span><span class="o">.</span><span class="n">set_event_loop</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_ws_loop_scheduler</span><span class="p">)</span> <span class="c1">#tell the asyncio that self._ws_loop_scheduler is the asyncio event loop</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">_ws_loop_scheduler</span><span class="o">.</span><span class="n">run_until_complete</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_start_ws_server</span><span class="p">())</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">_ws_thread_exec</span><span class="o">.</span><span class="n">set</span><span class="p">()</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">_ws_loop_scheduler</span><span class="o">.</span><span class="n">run_forever</span><span class="p">()</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">_start_ws_server</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">_ws_server</span> <span class="o">=</span> <span class="k">await</span> <span class="n">websockets</span><span class="o">.</span><span class="n">serve</span><span class="p">(</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_handle_client</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ws_host</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ws_port</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">_ws_bound_addresses</span> <span class="o">=</span> <span class="p">[</span>
+        <span class="n">sock</span><span class="o">.</span><span class="n">getsockname</span><span class="p">()</span> <span class="k">for</span> <span class="n">sock</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ws_server</span><span class="o">.</span><span class="n">sockets</span>
+    <span class="p">]</span>
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">set_event_loop</span></code> pins the event loop to this thread. <code class="docutils literal notranslate"><span class="pre">run_until_complete</span></code> runs one
+coroutine — starting the server — and returns when it is up. Only then is the handshake
+Event <code class="docutils literal notranslate"><span class="pre">set()</span></code>, releasing the constructor. <code class="docutils literal notranslate"><span class="pre">run_forever</span></code> keeps the loop alive to serve
+clients and to run every broadcast job handed over from the other threads.
+<code class="docutils literal notranslate"><span class="pre">websockets.serve</span></code> registers <code class="docutils literal notranslate"><span class="pre">_handle_client</span></code> as the callback that runs <strong>once per
+browser connection</strong>; the bound addresses are recorded for the startup log message.</p>
+<p><strong>One client’s life —</strong> <code class="docutils literal notranslate"><span class="pre">_handle_client</span></code>.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">_handle_client</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">websocket</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+    <span class="c1"># Send the last known value for each topic so the browser has an</span>
+    <span class="c1"># immediate picture instead of waiting for the next tick.</span>
+    <span class="k">for</span> <span class="n">cached</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ws_last_messages</span><span class="o">.</span><span class="n">values</span><span class="p">():</span>
+        <span class="k">await</span> <span class="n">websocket</span><span class="o">.</span><span class="n">send</span><span class="p">(</span><span class="n">cached</span><span class="p">)</span>
+
+    <span class="n">snapshot</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_criteria_snapshot</span><span class="p">()</span>
+    <span class="k">if</span> <span class="n">snapshot</span><span class="p">:</span>
+        <span class="k">await</span> <span class="n">websocket</span><span class="o">.</span><span class="n">send</span><span class="p">(</span><span class="n">snapshot</span><span class="p">)</span>
+
+    <span class="bp">self</span><span class="o">.</span><span class="n">_ws_clients</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">websocket</span><span class="p">)</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">async</span> <span class="k">for</span> <span class="n">raw</span> <span class="ow">in</span> <span class="n">websocket</span><span class="p">:</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_handle_command</span><span class="p">(</span><span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">raw</span><span class="p">))</span>
+            <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+                <span class="k">pass</span>
+    <span class="k">except</span> <span class="n">websockets</span><span class="o">.</span><span class="n">ConnectionClosed</span><span class="p">:</span>
+        <span class="k">pass</span>
+    <span class="k">finally</span><span class="p">:</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_ws_clients</span><span class="o">.</span><span class="n">discard</span><span class="p">(</span><span class="n">websocket</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>The connect steps from the workflow diagram, in code: replay the cache, send the criteria
+snapshot, register the client. <code class="docutils literal notranslate"><span class="pre">async</span> <span class="pre">for</span> <span class="pre">raw</span> <span class="pre">in</span> <span class="pre">websocket</span></code> then waits for incoming
+messages — each one is a command. The inner <code class="docutils literal notranslate"><span class="pre">try/except</span></code> swallows a broken command so
+one typo from the browser cannot close the connection; the <code class="docutils literal notranslate"><span class="pre">finally</span></code> guarantees the
+client is removed from the broadcast set no matter how the connection ends.</p>
+<p><strong>The thread-safe broadcast bridge.</strong></p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">def</span><span class="w"> </span><span class="nf">_broadcast</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">payload</span><span class="p">:</span> <span class="nb">dict</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Thread-safe: called from ROS/LSL threads. Pushes JSON to all clients.&quot;&quot;&quot;</span>
+    <span class="n">message</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="n">payload</span><span class="p">)</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">_ws_last_messages</span><span class="p">[</span><span class="n">payload</span><span class="p">[</span><span class="s2">&quot;topic&quot;</span><span class="p">]]</span> <span class="o">=</span> <span class="n">message</span>
+    <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ws_clients</span><span class="p">:</span>
+        <span class="n">asyncio</span><span class="o">.</span><span class="n">run_coroutine_threadsafe</span><span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_broadcast_async</span><span class="p">(</span><span class="n">message</span><span class="p">),</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ws_loop_scheduler</span><span class="p">,</span>
+        <span class="p">)</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">_broadcast_async</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">message</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+    <span class="k">for</span> <span class="n">client</span> <span class="ow">in</span> <span class="nb">list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_ws_clients</span><span class="p">):</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">await</span> <span class="n">client</span><span class="o">.</span><span class="n">send</span><span class="p">(</span><span class="n">message</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">get_logger</span><span class="p">()</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;[_broadcast_async] send failed: </span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">e</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_ws_clients</span><span class="o">.</span><span class="n">discard</span><span class="p">(</span><span class="n">client</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>This pair is the bridge between the threads. <code class="docutils literal notranslate"><span class="pre">_broadcast</span></code> is called from the ROS
+callbacks (main thread), but the WebSocket objects belong to the event loop in the ws
+thread — touching them directly from another thread would corrupt them.
+<code class="docutils literal notranslate"><span class="pre">run_coroutine_threadsafe</span></code> solves this: it hands the coroutine <strong>to</strong> the event loop
+and lets the loop run it in its own thread. Note the cache is updated even when no client
+is connected, so a browser that arrives later still gets the newest values.
+<code class="docutils literal notranslate"><span class="pre">_broadcast_async</span></code> iterates over a <strong>copy</strong> of the client set (<code class="docutils literal notranslate"><span class="pre">list(...)</span></code>) so it can
+safely drop a dead client while looping.</p>
+<p><strong>Reading the criteria —</strong> <code class="docutils literal notranslate"><span class="pre">_get_criteria_snapshot</span></code>.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">_get_criteria_snapshot</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">_criteria_client</span><span class="o">.</span><span class="n">wait_for_service</span><span class="p">(</span><span class="n">timeout_sec</span><span class="o">=</span><span class="mf">0.5</span><span class="p">):</span>
+        <span class="k">return</span> <span class="kc">None</span>
+    <span class="n">req</span> <span class="o">=</span> <span class="n">UpdateCriteria</span><span class="o">.</span><span class="n">Request</span><span class="p">()</span>
+    <span class="n">req</span><span class="o">.</span><span class="n">criteria_json</span> <span class="o">=</span> <span class="s2">&quot;</span><span class="si">{}</span><span class="s2">&quot;</span>
+    <span class="n">future</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_criteria_client</span><span class="o">.</span><span class="n">call_async</span><span class="p">(</span><span class="n">req</span><span class="p">)</span>
+    <span class="k">while</span> <span class="ow">not</span> <span class="n">future</span><span class="o">.</span><span class="n">done</span><span class="p">():</span>
+        <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mf">0.05</span><span class="p">)</span>
+
+    <span class="n">result</span> <span class="o">=</span> <span class="n">future</span><span class="o">.</span><span class="n">result</span><span class="p">()</span>
+    <span class="k">if</span> <span class="n">result</span> <span class="ow">and</span> <span class="n">result</span><span class="o">.</span><span class="n">success</span><span class="p">:</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_last_criteria_json</span> <span class="o">=</span> <span class="n">result</span><span class="o">.</span><span class="n">current_criteria_json</span>
+        <span class="k">return</span> <span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">({</span>
+            <span class="s2">&quot;topic&quot;</span><span class="p">:</span> <span class="s2">&quot;criteria_snapshot&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;data&quot;</span><span class="p">:</span> <span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">current_criteria_json</span><span class="p">)</span>
+        <span class="p">})</span>
+
+    <span class="k">return</span> <span class="kc">None</span>
+</pre></div>
+</div>
+<p>The trick here is calling <code class="docutils literal notranslate"><span class="pre">update_criteria</span></code> with an <strong>empty</strong> <code class="docutils literal notranslate"><span class="pre">&quot;{}&quot;</span></code> — change
+nothing, just return the current criteria. <code class="docutils literal notranslate"><span class="pre">call_async</span></code> returns a <em>future</em> (a result
+that is not ready yet); the <code class="docutils literal notranslate"><span class="pre">while</span></code> + <code class="docutils literal notranslate"><span class="pre">await</span> <span class="pre">asyncio.sleep</span></code> polls it gently, so the
+event loop stays free to serve other clients while waiting. A plain blocking wait here
+would freeze every WebSocket connection. If the evaluator is not up within 0.5 s, the
+snapshot is simply skipped.</p>
+<p><strong>The command dispatcher —</strong> <code class="docutils literal notranslate"><span class="pre">_handle_command</span></code>. First the simple commands:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">_handle_command</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">cmd</span><span class="p">:</span> <span class="nb">dict</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+    <span class="n">command</span> <span class="o">=</span> <span class="n">cmd</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;command&quot;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">command</span> <span class="o">==</span> <span class="s2">&quot;time_sync&quot;</span><span class="p">:</span>
+        <span class="n">ref_sec</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_clock</span><span class="p">()</span><span class="o">.</span><span class="n">now</span><span class="p">()</span><span class="o">.</span><span class="n">nanoseconds</span> <span class="o">/</span> <span class="mf">1e9</span>
+        <span class="n">payload</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">({</span><span class="s2">&quot;topic&quot;</span><span class="p">:</span> <span class="s2">&quot;time_sync&quot;</span><span class="p">,</span> <span class="s2">&quot;data&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;ref_stamp&quot;</span><span class="p">:</span> <span class="n">ref_sec</span><span class="p">}})</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_ws_last_messages</span><span class="p">[</span><span class="s2">&quot;time_sync&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">payload</span>
+        <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_broadcast_async</span><span class="p">(</span><span class="n">payload</span><span class="p">)</span>
+    <span class="k">elif</span> <span class="n">command</span> <span class="o">==</span> <span class="s2">&quot;stop_experiment&quot;</span><span class="p">:</span>
+        <span class="n">msg</span> <span class="o">=</span> <span class="n">EventTrigger</span><span class="p">()</span>
+        <span class="n">msg</span><span class="o">.</span><span class="n">header</span><span class="o">.</span><span class="n">stamp</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_clock</span><span class="p">()</span><span class="o">.</span><span class="n">now</span><span class="p">()</span><span class="o">.</span><span class="n">to_msg</span><span class="p">()</span>
+        <span class="n">msg</span><span class="o">.</span><span class="n">header</span><span class="o">.</span><span class="n">frame_id</span> <span class="o">=</span> <span class="s2">&quot;browser&quot;</span>
+        <span class="n">msg</span><span class="o">.</span><span class="n">event</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">({</span><span class="s2">&quot;mode&quot;</span><span class="p">:</span> <span class="s2">&quot;STOP&quot;</span><span class="p">,</span> <span class="s2">&quot;action&quot;</span><span class="p">:</span> <span class="s2">&quot;stop&quot;</span><span class="p">})</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_event_trigger_pub</span><span class="o">.</span><span class="n">publish</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+    <span class="k">elif</span> <span class="n">command</span> <span class="o">==</span> <span class="s2">&quot;skip_iteration&quot;</span><span class="p">:</span>
+        <span class="n">msg</span> <span class="o">=</span> <span class="n">EventTrigger</span><span class="p">()</span>
+        <span class="n">msg</span><span class="o">.</span><span class="n">header</span><span class="o">.</span><span class="n">stamp</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_clock</span><span class="p">()</span><span class="o">.</span><span class="n">now</span><span class="p">()</span><span class="o">.</span><span class="n">to_msg</span><span class="p">()</span>
+        <span class="n">msg</span><span class="o">.</span><span class="n">header</span><span class="o">.</span><span class="n">frame_id</span> <span class="o">=</span> <span class="s2">&quot;browser&quot;</span>
+        <span class="n">msg</span><span class="o">.</span><span class="n">event</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">({</span><span class="s2">&quot;action&quot;</span><span class="p">:</span> <span class="s2">&quot;skip_iteration&quot;</span><span class="p">})</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_event_trigger_pub</span><span class="o">.</span><span class="n">publish</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">time_sync</span></code> answers with the node’s current ROS time so the browser can align its chart
+axis with the data stamps. <code class="docutils literal notranslate"><span class="pre">stop_experiment</span></code> and <code class="docutils literal notranslate"><span class="pre">skip_iteration</span></code> are turned into
+normal <code class="docutils literal notranslate"><span class="pre">EventTrigger</span></code> messages — with <code class="docutils literal notranslate"><span class="pre">frame_id</span> <span class="pre">=</span> <span class="pre">&quot;browser&quot;</span></code> marking where they came
+from — and published on the same <code class="docutils literal notranslate"><span class="pre">/event_trigger</span></code> topic the evaluator already listens
+to. Reusing the existing topic means the evaluator needs no extra input channel for
+browser actions.</p>
+<p>Then the stateful commands:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">elif</span> <span class="n">command</span> <span class="o">==</span> <span class="s2">&quot;criteria_update&quot;</span><span class="p">:</span>
+    <span class="n">data</span> <span class="o">=</span> <span class="n">cmd</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;data&quot;</span><span class="p">,</span> <span class="p">{})</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">_criteria_client</span><span class="o">.</span><span class="n">wait_for_service</span><span class="p">(</span><span class="n">timeout_sec</span><span class="o">=</span><span class="mf">0.5</span><span class="p">):</span>
+        <span class="k">return</span>
+    <span class="n">req</span> <span class="o">=</span> <span class="n">UpdateCriteria</span><span class="o">.</span><span class="n">Request</span><span class="p">()</span>
+    <span class="n">req</span><span class="o">.</span><span class="n">criteria_json</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
+    <span class="n">future</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_criteria_client</span><span class="o">.</span><span class="n">call_async</span><span class="p">(</span><span class="n">req</span><span class="p">)</span>
+    <span class="k">while</span> <span class="ow">not</span> <span class="n">future</span><span class="o">.</span><span class="n">done</span><span class="p">():</span>
+        <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mf">0.05</span><span class="p">)</span>
+    <span class="n">result</span> <span class="o">=</span> <span class="n">future</span><span class="o">.</span><span class="n">result</span><span class="p">()</span>
+    <span class="n">acknowledgement</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;topic&quot;</span><span class="p">:</span> <span class="s2">&quot;criteria_ack&quot;</span><span class="p">,</span> <span class="s2">&quot;data&quot;</span><span class="p">:</span> <span class="p">{</span>
+                   <span class="s2">&quot;success&quot;</span><span class="p">:</span> <span class="n">result</span><span class="o">.</span><span class="n">success</span><span class="p">,</span>
+                   <span class="s2">&quot;message&quot;</span><span class="p">:</span> <span class="n">result</span><span class="o">.</span><span class="n">message</span><span class="p">,</span>
+                <span class="p">}}</span>
+    <span class="k">if</span> <span class="n">result</span><span class="o">.</span><span class="n">success</span><span class="p">:</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_last_criteria_json</span> <span class="o">=</span> <span class="n">result</span><span class="o">.</span><span class="n">current_criteria_json</span>
+        <span class="n">acknowledgement</span><span class="p">[</span><span class="s2">&quot;data&quot;</span><span class="p">][</span><span class="s2">&quot;criteria&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">current_criteria_json</span><span class="p">)</span>
+
+    <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_broadcast_async</span><span class="p">(</span><span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="n">acknowledgement</span><span class="p">))</span>
+<span class="k">elif</span> <span class="n">command</span> <span class="o">==</span> <span class="s2">&quot;pos_sync&quot;</span><span class="p">:</span>
+    <span class="n">delta</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">cmd</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;data&quot;</span><span class="p">,</span> <span class="p">{})</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;delta_rad&quot;</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">))</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">_actual_pos_offset_rad</span> <span class="o">+=</span> <span class="n">delta</span>
+<span class="k">elif</span> <span class="n">command</span> <span class="o">==</span> <span class="s2">&quot;zero_set&quot;</span><span class="p">:</span>
+    <span class="n">act_now</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">cmd</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;data&quot;</span><span class="p">,</span> <span class="p">{})</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;act_rad&quot;</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">))</span>
+    <span class="c1"># Estimated side: ask the Kalman node to re-zero at the source so the</span>
+    <span class="c1"># evaluator and LSL outlet stay in the same frame as the display.</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">_zero_estimated_pub</span><span class="o">.</span><span class="n">publish</span><span class="p">(</span><span class="n">Empty</span><span class="p">())</span>
+    <span class="c1"># Actual side: /actual_states is produced here, so offset it locally.</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">_actual_pos_offset_rad</span> <span class="o">+=</span> <span class="n">act_now</span>
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">criteria_update</span></code> forwards the new limits to the evaluator through the service (same
+polling pattern as the snapshot) and then broadcasts a <code class="docutils literal notranslate"><span class="pre">criteria_ack</span></code> to <strong>every</strong>
+client — so if two browsers are open, both see the new limits, not just the one that
+changed them. <code class="docutils literal notranslate"><span class="pre">pos_sync</span></code> nudges the actual-side offset by a delta. <code class="docutils literal notranslate"><span class="pre">zero_set</span></code> splits
+the zeroing in two, exactly as the comments say: the estimated side is re-zeroed at the
+source (one <code class="docutils literal notranslate"><span class="pre">Empty</span></code> message to the State Estimator), and the actual side is offset
+locally because <code class="docutils literal notranslate"><span class="pre">/actual_states</span></code> is built inside this node.</p>
+<p><strong>The ROS subscription callbacks.</strong></p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">def</span><span class="w"> </span><span class="nf">_estimated_states_cb</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">msg</span><span class="p">:</span> <span class="n">EncoderState</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+    <span class="c1"># msg.position already arrives zeroed from the Kalman node, so the LSL</span>
+    <span class="c1"># outlet and the WS broadcast both carry the same frame, no patching here.</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">_estimated_states_outlet</span><span class="o">.</span><span class="n">push_sample</span><span class="p">(</span>
+        <span class="p">[</span><span class="nb">float</span><span class="p">(</span><span class="n">msg</span><span class="o">.</span><span class="n">position</span><span class="p">),</span> <span class="nb">float</span><span class="p">(</span><span class="n">msg</span><span class="o">.</span><span class="n">velocity</span><span class="p">),</span> <span class="nb">float</span><span class="p">(</span><span class="n">msg</span><span class="o">.</span><span class="n">acceleration</span><span class="p">)],</span>
+        <span class="n">timestamp</span><span class="o">=</span><span class="n">_stamp_to_sec</span><span class="p">(</span><span class="n">msg</span><span class="o">.</span><span class="n">header</span><span class="o">.</span><span class="n">stamp</span><span class="p">),</span>
+    <span class="p">)</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">_broadcast</span><span class="p">(</span><span class="n">estimated_states_to_json</span><span class="p">(</span><span class="n">msg</span><span class="p">))</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_actual_states_cb</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">msg</span><span class="p">:</span> <span class="n">ActualStates</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">_broadcast</span><span class="p">(</span><span class="n">actual_states_to_json</span><span class="p">(</span><span class="n">msg</span><span class="p">))</span>
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">_estimated_states_cb</span></code> is the only callback with two jobs: push the three states into
+the LSL outlet (using the ROS stamp as the LSL timestamp) and broadcast the full message
+to the browser. The position needs no correction here — it already arrives zeroed from
+the State Estimator. The other four callbacks all look like <code class="docutils literal notranslate"><span class="pre">_actual_states_cb</span></code>: one
+line, serialize and broadcast.</p>
+<p><strong>Pulling from LSL —</strong> <code class="docutils literal notranslate"><span class="pre">extract_sample_from_lsl_inlet</span></code> <strong>and</strong> <code class="docutils literal notranslate"><span class="pre">_resolve_stream</span></code>.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">def</span><span class="w"> </span><span class="nf">extract_sample_from_lsl_inlet</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">inlet</span><span class="p">,</span> <span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">timeout</span><span class="p">:</span> <span class="nb">float</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Pull one sample. inlet persists across calls via the caller&#39;s local variable.</span>
+
+<span class="sd">    Returns (sample, inlet):</span>
+<span class="sd">      - sample is None if nothing arrived or an error occurred</span>
+<span class="sd">      - inlet is None when the stream needs to be re-resolved next call</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">inlet</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">inlet</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_resolve_stream</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">timeout</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">inlet</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">None</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">sample</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">inlet</span><span class="o">.</span><span class="n">pull_sample</span><span class="p">(</span><span class="n">timeout</span><span class="o">=</span><span class="mf">1.0</span><span class="p">)</span>
+    <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">get_logger</span><span class="p">()</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;[</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2">] pull_sample error: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">None</span>  <span class="c1"># inlet=None triggers re-resolve next iteration</span>
+
+    <span class="k">if</span> <span class="n">sample</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">None</span><span class="p">,</span> <span class="n">inlet</span>
+
+    <span class="k">if</span> <span class="nb">type</span><span class="p">(</span><span class="n">sample</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span> <span class="o">==</span> <span class="nb">float</span><span class="p">:</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">sample</span><span class="p">)</span> <span class="o">&lt;</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">actual_states_channel</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">get_logger</span><span class="p">()</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;[actual_states] expected </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">actual_states_channel</span><span class="p">)</span><span class="si">}</span><span class="s2"> channels, got </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">sample</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span>
+            <span class="p">)</span>
+            <span class="k">return</span> <span class="kc">None</span><span class="p">,</span> <span class="n">inlet</span>
+        <span class="k">return</span> <span class="n">sample</span><span class="p">,</span> <span class="n">inlet</span>
+
+    <span class="k">elif</span> <span class="nb">type</span><span class="p">(</span><span class="n">sample</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span> <span class="o">==</span> <span class="nb">str</span><span class="p">:</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">sample</span><span class="p">[</span><span class="mi">0</span><span class="p">]),</span> <span class="n">inlet</span>
+        <span class="k">except</span> <span class="p">(</span><span class="ne">TypeError</span><span class="p">,</span> <span class="ne">ValueError</span><span class="p">):</span>
+            <span class="k">return</span> <span class="p">{</span><span class="s2">&quot;event&quot;</span><span class="p">:</span> <span class="s2">&quot;LABEL&quot;</span><span class="p">,</span> <span class="s2">&quot;label&quot;</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">sample</span><span class="p">[</span><span class="mi">0</span><span class="p">])},</span> <span class="n">inlet</span>
+
+    <span class="k">else</span><span class="p">:</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">get_logger</span><span class="p">()</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Sample type not match with the condition&quot;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="kc">None</span><span class="p">,</span> <span class="n">inlet</span>
+</pre></div>
+</div>
+<p>Both LSL workers call this helper once per pass. The <strong>lazy resolve</strong>: if there is no
+inlet yet, find the stream first. If <code class="docutils literal notranslate"><span class="pre">pull_sample</span></code> raises an error, the helper returns
+<code class="docutils literal notranslate"><span class="pre">inlet=None</span></code> — the caller stores that, and the next pass resolves again. This is the
+self-healing behaviour from the workflow section. The sample is then handled by type: a
+float first channel means a numeric <code class="docutils literal notranslate"><span class="pre">ActualStates</span></code> sample (with a channel-count sanity
+check); a string first channel means an <code class="docutils literal notranslate"><span class="pre">EventTrigger</span></code> JSON payload, parsed with a
+fallback that wraps a plain string as a label event.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">def</span><span class="w"> </span><span class="nf">_resolve_stream</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">timeout</span><span class="p">:</span> <span class="nb">float</span><span class="p">):</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">get_logger</span><span class="p">()</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Resolving LSL stream &#39;</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2">&#39; (timeout=</span><span class="si">{</span><span class="n">timeout</span><span class="si">}</span><span class="s2">s)…&quot;</span><span class="p">)</span>
+    <span class="n">streams</span> <span class="o">=</span> <span class="n">pylsl</span><span class="o">.</span><span class="n">resolve_byprop</span><span class="p">(</span><span class="s2">&quot;name&quot;</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">timeout</span><span class="o">=</span><span class="n">timeout</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">streams</span><span class="p">:</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">get_logger</span><span class="p">()</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;LSL stream &#39;</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2">&#39; not found — will keep retrying&quot;</span>
+        <span class="p">)</span>
+        <span class="k">return</span> <span class="kc">None</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">get_logger</span><span class="p">()</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;LSL stream &#39;</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2">&#39; resolved.&quot;</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">pylsl</span><span class="o">.</span><span class="n">StreamInlet</span><span class="p">(</span><span class="n">streams</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+</pre></div>
+</div>
+<p>Resolving = searching the network for a stream whose <code class="docutils literal notranslate"><span class="pre">name</span></code> property matches, for at
+most <code class="docutils literal notranslate"><span class="pre">timeout</span></code> seconds (5 s from <code class="docutils literal notranslate"><span class="pre">params.yaml</span></code>). If found, an inlet is opened on the
+first match.</p>
+<p><strong>The two worker loops.</strong></p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">def</span><span class="w"> </span><span class="nf">_actual_states_worker</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">timeout</span><span class="p">:</span> <span class="nb">float</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+    <span class="n">inlet</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="k">while</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">_lsl_threads_exec</span><span class="o">.</span><span class="n">is_set</span><span class="p">():</span>
+        <span class="n">sample</span><span class="p">,</span> <span class="n">inlet</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">extract_sample_from_lsl_inlet</span><span class="p">(</span><span class="n">inlet</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">timeout</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">sample</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">msg</span> <span class="o">=</span> <span class="n">ActualStates</span><span class="p">()</span>
+            <span class="n">msg</span><span class="o">.</span><span class="n">header</span><span class="o">.</span><span class="n">stamp</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_clock</span><span class="p">()</span><span class="o">.</span><span class="n">now</span><span class="p">()</span><span class="o">.</span><span class="n">to_msg</span><span class="p">()</span>
+            <span class="n">msg</span><span class="o">.</span><span class="n">header</span><span class="o">.</span><span class="n">frame_id</span> <span class="o">=</span> <span class="s2">&quot;robot_controller&quot;</span>
+            <span class="n">msg</span><span class="o">.</span><span class="n">actual_position</span>     <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">sample</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span> <span class="o">*</span> <span class="n">_DEG_TO_RAD</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">_actual_pos_offset_rad</span>
+            <span class="n">msg</span><span class="o">.</span><span class="n">actual_velocity</span>     <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">sample</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span>
+            <span class="n">msg</span><span class="o">.</span><span class="n">actual_acceleration</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">sample</span><span class="p">[</span><span class="mi">2</span><span class="p">])</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_actual_states_pub</span><span class="o">.</span><span class="n">publish</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+            <span class="c1"># No _broadcast here — the ROS subscription callback handles it.</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_event_trigger_worker</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">timeout</span><span class="p">:</span> <span class="nb">float</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+    <span class="n">inlet</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="k">while</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">_lsl_threads_exec</span><span class="o">.</span><span class="n">is_set</span><span class="p">():</span>
+        <span class="n">json_payload</span><span class="p">,</span> <span class="n">inlet</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">extract_sample_from_lsl_inlet</span><span class="p">(</span><span class="n">inlet</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">timeout</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">json_payload</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">msg</span> <span class="o">=</span> <span class="n">EventTrigger</span><span class="p">()</span>
+            <span class="n">msg</span><span class="o">.</span><span class="n">header</span><span class="o">.</span><span class="n">stamp</span>    <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_clock</span><span class="p">()</span><span class="o">.</span><span class="n">now</span><span class="p">()</span><span class="o">.</span><span class="n">to_msg</span><span class="p">()</span>
+            <span class="n">msg</span><span class="o">.</span><span class="n">header</span><span class="o">.</span><span class="n">frame_id</span> <span class="o">=</span> <span class="s2">&quot;robot_controller&quot;</span>
+            <span class="n">msg</span><span class="o">.</span><span class="n">event</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="n">json_payload</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">get_logger</span><span class="p">()</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;[EventTrigger] event=</span><span class="si">{</span><span class="n">json_payload</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;event&#39;</span><span class="p">)</span><span class="si">}</span><span class="s2"> payload=</span><span class="si">{</span><span class="n">msg</span><span class="o">.</span><span class="n">event</span><span class="si">}</span><span class="s2">&quot;</span>
+            <span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_event_trigger_pub</span><span class="o">.</span><span class="n">publish</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+            <span class="c1"># No _broadcast here — the ROS subscription callback handles it.</span>
+</pre></div>
+</div>
+<p>The same skeleton twice: loop until the stop flag is set, pull one sample per pass,
+publish if something arrived. The actual-states worker converts the position from degrees
+to radians (<code class="docutils literal notranslate"><span class="pre">_DEG_TO_RAD</span></code>) and subtracts the actual-side offset; the message is stamped
+with the node’s current time and marked <code class="docutils literal notranslate"><span class="pre">frame_id</span> <span class="pre">=</span> <span class="pre">&quot;robot_controller&quot;</span></code> to record where
+the data came from. The event worker re-packs the parsed payload as a JSON string in the
+<code class="docutils literal notranslate"><span class="pre">event</span></code> field and logs each event. Both end at <code class="docutils literal notranslate"><span class="pre">publish</span></code> — the “No <code class="docutils literal notranslate"><span class="pre">_broadcast</span></code>
+here” comments are the single-broadcast-path rule from the workflow section.</p>
+<p><strong>Shutdown —</strong> <code class="docutils literal notranslate"><span class="pre">destroy_node</span></code>.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">def</span><span class="w"> </span><span class="nf">destroy_node</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">_lsl_threads_exec</span><span class="o">.</span><span class="n">set</span><span class="p">()</span>
+    <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_lsl_threads</span><span class="p">:</span>
+        <span class="n">t</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">timeout</span><span class="o">=</span><span class="mf">1.5</span><span class="p">)</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_ws_loop_scheduler</span><span class="o">.</span><span class="n">call_soon_threadsafe</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_ws_loop_scheduler</span><span class="o">.</span><span class="n">stop</span><span class="p">)</span>
+    <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+        <span class="k">pass</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_http_server</span><span class="o">.</span><span class="n">shutdown</span><span class="p">()</span>
+    <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+        <span class="k">pass</span>
+    <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">destroy_node</span><span class="p">()</span>
+</pre></div>
+</div>
+<p>The constructor in reverse. Setting the stop flag ends both LSL <code class="docutils literal notranslate"><span class="pre">while</span></code> loops, and
+<code class="docutils literal notranslate"><span class="pre">join</span></code> waits (up to 1.5 s each) for them to finish. The event loop must be stopped
+from its own thread, so — the same rule as broadcasting — the stop request is handed
+over with <code class="docutils literal notranslate"><span class="pre">call_soon_threadsafe</span></code>. The HTTP server has its own <code class="docutils literal notranslate"><span class="pre">shutdown()</span></code>. Finally
+the base class cleans up the ROS side. <code class="docutils literal notranslate"><span class="pre">main</span></code> is the same standard entry point as on
+the <a class="reference internal" href="state_estimator_node.html"><span class="doc">State Estimator page</span></a>, so it is not repeated here.</p>
+</section>
+<section id="notation">
+<h3>Notation<a class="headerlink" href="#notation" title="Permalink to this heading"></a></h3>
+<p>Words used on this page.</p>
+<dl class="simple">
+<dt>thread / daemon thread</dt><dd><p>A worker running inside the same process, sharing its memory. A <strong>daemon</strong> thread is
+killed automatically when the program exits, so it never blocks shutdown.</p>
+</dd>
+<dt>event loop (asyncio)</dt><dd><p>The scheduler that runs many small async tasks inside one thread. It is called a
+“loop” because its internal mechanism is literally a continuous <code class="docutils literal notranslate"><span class="pre">while</span></code> loop.</p>
+</dd>
+<dt>coroutine / async function</dt><dd><p>A function (<code class="docutils literal notranslate"><span class="pre">async</span> <span class="pre">def</span></code>) that the event loop can pause at every <code class="docutils literal notranslate"><span class="pre">await</span></code> and
+resume later, so one thread can serve many clients.</p>
+</dd>
+<dt>callback</dt><dd><p>A function that runs automatically when something arrives — a ROS message, or a new
+WebSocket connection.</p>
+</dd>
+<dt>fan-out / fan-in</dt><dd><p><strong>Fan-out</strong> = one input sent out to many destinations; <strong>fan-in</strong> = many sources
+funnelled into one point. (The word comes from electronics: how many gate inputs one
+output pin can drive.) The main thread is called the <em>fan-out hub</em> because many
+producers funnel into the ROS topics, and its callbacks send every message out to all
+connected browsers — and the estimated states to the LSL outlet too.</p>
+</dd>
+<dt>thread-safe</dt><dd><p>Safe to call from another thread without corrupting shared data. Here it is done by
+handing work to the event loop with <code class="docutils literal notranslate"><span class="pre">asyncio.run_coroutine_threadsafe</span></code>.</p>
+</dd>
+<dt>serializer / JSON envelope</dt><dd><p>A serializer turns a ROS message into JSON. The envelope is the fixed outer shape
+<code class="docutils literal notranslate"><span class="pre">{&quot;topic&quot;:</span> <span class="pre">...,</span> <span class="pre">&quot;data&quot;:</span> <span class="pre">...}</span></code> that every message to the browser uses.</p>
+</dd>
+<dt>inlet / outlet (LSL)</dt><dd><p>The two ends of an LSL stream: a source publishes through an <strong>outlet</strong>, a reader
+receives through an <strong>inlet</strong>.</p>
+</dd>
+<dt>resolve (LSL)</dt><dd><p>Searching the network for a stream (here: by its <code class="docutils literal notranslate"><span class="pre">name</span></code> property) before opening
+an inlet on it.</p>
+</dd>
+<dt>cache / snapshot</dt><dd><p>The stored last message of every topic. It is replayed to a newly connected browser
+(the snapshot), so the dashboard starts with a full picture instead of empty charts.</p>
+</dd>
+<dt>service client</dt><dd><p>The caller side of a ROS 2 service — a request/response call, used here for
+<code class="docutils literal notranslate"><span class="pre">update_criteria</span></code>. <code class="docutils literal notranslate"><span class="pre">call_async</span></code> returns a <em>future</em>: a result that is not ready
+yet and must be polled or awaited.</p>
+</dd>
+<dt>blocking</dt><dd><p>A call that holds its thread until it finishes (for example <code class="docutils literal notranslate"><span class="pre">serve_forever</span></code> or
+<code class="docutils literal notranslate"><span class="pre">rclpy.spin</span></code>). Blocking calls are why the servers get their own threads.</p>
+</dd>
+<dt>handshake (<code class="docutils literal notranslate"><span class="pre">threading.Event</span></code>)</dt><dd><p>One thread waits (<code class="docutils literal notranslate"><span class="pre">wait()</span></code>) until another signals (<code class="docutils literal notranslate"><span class="pre">set()</span></code>) that it is ready —
+used so the constructor only continues after the WebSocket server is listening, and
+reused as a stop flag for the LSL workers.</p>
+</dd>
+</dl>
+</section>
+<hr class="docutils" />
+<section id="future-works">
+<h3>Future Works<a class="headerlink" href="#future-works" title="Permalink to this heading"></a></h3>
+<p>This node is too big and too complex. It should be separated to two nodes including</p>
+<ol class="arabic simple">
+<li><p>States Interface Node: manage the actual states and estimated states from different
+source (<code class="docutils literal notranslate"><span class="pre">mock_ui</span></code> and <code class="docutils literal notranslate"><span class="pre">LSL</span></code>) and pass the data for visualization to a Visualizer
+Node.</p></li>
+<li><p>Visualizer node: Host the html and ws server and broadcasting the incoming data
+to the front-end (UI) along with passing the user command from the UI back to the
+system.</p></li>
+</ol>
+</section>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2026, Institute of Field Robotics.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

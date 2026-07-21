@@ -1,0 +1,16 @@
+# Python dependencies for FRA263-Demo_Software.
+#
+# Install into the repo-root virtual environment:
+#     python3 -m venv .venv
+#     source .venv/bin/activate
+#     pip install -r requirements.txt
+#
+# ROS 2 packages (rclpy, ament_index_python, the custom message packages) are NOT
+# installed with pip. They come from /opt/ros/jazzy and from the built workspace,
+# and become importable when you source their setup.bash files.
+
+pylsl>=1.16          # LSL bridge; ships its own liblsl.so, no system library needed
+websockets>=16.0     # web_visualizer + server_111 WebSocket servers
+pymodbus>=3.3.0      # Modbus RTU link to the robot controller
+pyserial>=3.5        # serial transport used by pymodbus
+PyYAML>=6.0          # params.yaml / criteria.yaml loading

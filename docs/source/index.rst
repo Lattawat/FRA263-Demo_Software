@@ -28,6 +28,7 @@ Contents
    :maxdepth: 1
 
    system_overview
+   get_started
    Tutorial
    Base System
-   verification_system
+   verification_system/verification_system.rst

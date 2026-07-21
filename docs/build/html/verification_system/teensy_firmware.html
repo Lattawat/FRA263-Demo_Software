@@ -1,0 +1,564 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.18.1: http://docutils.sourceforge.net/" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Teensy 4.1 Firmware &mdash; FRA263 Software 0.1 documentation</title>
+      <link rel="stylesheet" href="../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../_static/css/theme.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script src="../_static/jquery.js?v=5d32c60e"></script>
+        <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+        <script data-url_root="../" id="documentation_options" src="../_static/documentation_options.js?v=e031e9a9"></script>
+        <script src="../_static/doctools.js?v=888ff710"></script>
+        <script src="../_static/sphinx_highlight.js?v=4825356b"></script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../index.html" class="icon icon-home">
+            FRA263 Software
+          </a>
+              <div class="version">
+                0.1.0
+              </div>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+<li class="toctree-l1"><a class="reference internal" href="../system_overview.html">System Architecture &amp; Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../get_started.html">Getting Started</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Base%20System.html">Base System</a></li>
+<li class="toctree-l1"><a class="reference internal" href="verification_system.html">Verification System Implementation</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">FRA263 Software</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Teensy 4.1 Firmware</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/verification_system/teensy_firmware.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="teensy-4-1-firmware">
+<h1>Teensy 4.1 Firmware<a class="headerlink" href="#teensy-4-1-firmware" title="Permalink to this heading"></a></h1>
+<p><strong>Encoder Raw Ticks Publisher</strong></p>
+<p>This firmware is the real hardware source of the <code class="docutils literal notranslate"><span class="pre">EncoderRaw</span></code> message. It runs on a
+<strong>Teensy 4.1</strong> microcontroller, reads the quadrature encoder mounted on the test rig, and
+publishes the raw tick count as a micro-ROS node named <code class="docutils literal notranslate"><span class="pre">encoder_data_publisher</span></code>. During
+a testing session, this node will be replaced by <code class="docutils literal notranslate"><span class="pre">mock_ui</span></code>, which is programmed to publish
+the same type of information.</p>
+<p>A microcontroller cannot join a ROS 2 network on its own. It uses <strong>micro-ROS</strong>, a cut-down
+ROS 2 client library for embedded devices, and reaches the full ROS 2 graph through the
+<strong>micro-ROS agent</strong>, a small program running on the host PC that bridges the Teensy’s serial
+link to normal ROS 2 topics.</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>encoder A/B        ┌──────────────────────────┐   USB serial   ┌────────────────────┐    /G&lt;N&gt;/encoder_raw
+channels   ───────▶│  Teensy 4.1              │───────────────▶│  micro-ROS agent   │───▶ (EncoderRaw)
+(pins 7, 6)        │  encoder_data_publisher  │  (XRCE-DDS)    │  (host PC)         │     ticks, raw_position,
+                   │  micro-ROS node          │                └────────────────────┘     dt_us
+                   └──────────────────────────┘
+</pre></div>
+</div>
+<p>The Teensy and the agent talk over USB serial using <strong>XRCE-DDS</strong> (the lightweight transport
+micro-ROS uses in place of full DDS). The other nodes will see the <code class="docutils literal notranslate"><span class="pre">/G&lt;N&gt;/encoder_raw</span></code> message
+as published by the micro-ROS agent.</p>
+<p><strong>Key settings.</strong> These are fixed in the firmware and the build config, and several of them
+<em>must</em> match the host PC or the messages never arrive.</p>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 26%" />
+<col style="width: 18%" />
+<col style="width: 56%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Setting</p></th>
+<th class="head"><p>Value</p></th>
+<th class="head"><p>Meaning</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">EN_RES</span></code></p></td>
+<td><p>8192</p></td>
+<td><p>Encoder resolution in ticks per revolution. Used by <code class="docutils literal notranslate"><span class="pre">ticks2rad</span></code> to convert a tick
+count into radians. Matches <code class="docutils literal notranslate"><span class="pre">ticks_per_rev</span></code> on the State Estimator side.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Encoder pins</p></td>
+<td><p>A = 7, B = 6</p></td>
+<td><p>The two quadrature channels read by the <code class="docutils literal notranslate"><span class="pre">Encoder</span></code> library.</p></td>
+</tr>
+<tr class="row-even"><td><p>Publish rate</p></td>
+<td><p>100 Hz</p></td>
+<td><p>Set by a 10 ms timer. One <code class="docutils literal notranslate"><span class="pre">EncoderRaw</span></code> message goes out every tick of that timer.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">dt_us</span></code></p></td>
+<td><p>10000</p></td>
+<td><p>The sample interval reported in each message. It is <strong>hard-coded</strong> to 10000 µs
+(10 ms), not measured, so it always agrees with the 100 Hz timer.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">GROUP_NUMBER</span></code></p></td>
+<td><p>N</p></td>
+<td><p>Sets the node namespace <code class="docutils literal notranslate"><span class="pre">/G&lt;N&gt;</span></code>. Must match the <code class="docutils literal notranslate"><span class="pre">group_number</span></code> the rest of the
+system is launched with, or the topics will not line up.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Domain ID</p></td>
+<td><p>156</p></td>
+<td><p>The ROS 2 domain the node joins. Must equal <code class="docutils literal notranslate"><span class="pre">ROS_DOMAIN_ID</span></code> on the host PC —
+different domains cannot see each other.</p></td>
+</tr>
+<tr class="row-even"><td><p>Transport</p></td>
+<td><p>serial b 115200</p></td>
+<td><p>USB serial to the agent, 115200 baud. Set in both the firmware and <code class="docutils literal notranslate"><span class="pre">platformio.ini</span></code>.</p></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Interfaces.</strong> The firmware has one interface:</p>
+<ul class="simple">
+<li><p><strong>Publishes</strong> <code class="docutils literal notranslate"><span class="pre">encoder_raw</span></code> (<code class="docutils literal notranslate"><span class="pre">EncoderRaw</span></code>: <code class="docutils literal notranslate"><span class="pre">ticks</span></code>, <code class="docutils literal notranslate"><span class="pre">raw_position</span></code>, <code class="docutils literal notranslate"><span class="pre">dt_us</span></code>, and
+the standard <code class="docutils literal notranslate"><span class="pre">header</span></code>)</p>
+<ul>
+<li><p><code class="docutils literal notranslate"><span class="pre">ticks</span></code>: the cumulative signed count read straight from the encoder.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">raw_position</span></code>: the tick count converted to radians by the <code class="docutils literal notranslate"><span class="pre">ticks2rad</span></code> function.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">dt_us</span></code>: the fixed 10000 µs described above.</p></li>
+</ul>
+</li>
+</ul>
+<p>The topic name is written <strong>relative</strong> (<code class="docutils literal notranslate"><span class="pre">encoder_raw</span></code>, no leading slash), so the node namespace <code class="docutils literal notranslate"><span class="pre">/G&lt;N&gt;</span></code>
+is added in front to give <code class="docutils literal notranslate"><span class="pre">/G&lt;N&gt;/encoder_raw</span></code>, just like the other nodes.</p>
+<p>Each message is time-stamped with <code class="docutils literal notranslate"><span class="pre">rmw_uros_epoch_nanos()</span></code> — <strong>the agent’s clock</strong>, not the
+Teensy’s. A microcontroller has no real-time clock of its own; on power-up its time starts
+from zero. The call <code class="docutils literal notranslate"><span class="pre">rmw_uros_sync_session()</span></code> in <code class="docutils literal notranslate"><span class="pre">setup()</span></code> syncs the node to the agent’s
+epoch once at start, so from then on every stamp is real wall-clock time. Without that sync
+the stamps would be boot-relative and useless for lining this stream up against the others.</p>
+<section id="how-the-custom-interface-is-used-on-the-microcontroller">
+<h2>How the custom interface is used on the microcontroller<a class="headerlink" href="#how-the-custom-interface-is-used-on-the-microcontroller" title="Permalink to this heading"></a></h2>
+<p>The firmware publishes <code class="docutils literal notranslate"><span class="pre">EncoderRaw</span></code>, which is one of <em>our</em> custom messages from the
+<code class="docutils literal notranslate"><span class="pre">claude_visualizer_interface</span></code> package. Getting a custom message onto a microcontroller
+works differently from a normal ROS 2 package.</p>
+<p>On a desktop, adding a message package is just a build dependency: the message headers are
+generated when the workspace is built and linked in at run time. In micro-ROS there is no run
+time to link against. The <strong>entire micro-ROS C library is cross-compiled into a single static
+``.a`` file</strong> when PlatformIO builds the firmware. A custom message therefore has to be part
+of <em>that</em> build. It cannot be added afterwards. Three pieces make this happen.</p>
+<p><strong>1. ``platformio.ini`` — the build and transport config.</strong></p>
+<div class="highlight-ini notranslate"><div class="highlight"><pre><span></span><span class="na">lib_deps</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">https://github.com/micro-ROS/micro_ros_platformio</span>
+<span class="na">board_microros_distro</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">jazzy</span>
+<span class="na">board_microros_transport</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">serial</span>
+<span class="na">board_microros_user_meta</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">colcon.meta</span>
+</pre></div>
+</div>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">lib_deps</span></code> pulls the <code class="docutils literal notranslate"><span class="pre">micro_ros_platformio</span></code> library from GitHub; it is what runs the
+cross-compilation.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">board_microros_distro</span> <span class="pre">=</span> <span class="pre">jazzy</span></code> picks which ROS 2 distribution’s message definitions are
+generated. It <strong>must match the ROS 2 distro on the host PC</strong> running the agent, or the two
+sides disagree about the message layout.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">board_microros_transport</span> <span class="pre">=</span> <span class="pre">serial</span></code> wires in the USB-serial transport.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">board_microros_user_meta</span> <span class="pre">=</span> <span class="pre">colcon.meta</span></code> points the build at the extra config file
+described below.</p></li>
+</ul>
+<p><strong>2. The ``extra_packages`` symlink — one definition, built twice.</strong></p>
+<p>The build script always looks for custom packages in a folder named <code class="docutils literal notranslate"><span class="pre">extra_packages</span></code> next to
+<code class="docutils literal notranslate"><span class="pre">platformio.ini</span></code>. Instead of copying the message package in, the project puts a <strong>symlink</strong>
+there that points back to the real package in the ROS 2 workspace:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>encoder_data_publisher/extra_packages/claude_visualizer_interface
+    → ../../src/claude_visualizer_interface
+</pre></div>
+</div>
+<p>Because it is a symlink, the nodes on the PC and the firmware are both built from the same definition,
+so <code class="docutils literal notranslate"><span class="pre">EncoderRaw</span></code> can never drift out of sync between the two.</p>
+<p><strong>3. ``colcon.meta`` — list the package so it is compiled in.</strong></p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;names&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nt">&quot;micro_ros_msgs&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{},</span>
+<span class="w">        </span><span class="nt">&quot;claude_visualizer_interface&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{}</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p>This is the file <code class="docutils literal notranslate"><span class="pre">board_microros_user_meta</span></code> pointed at. Listing
+<code class="docutils literal notranslate"><span class="pre">claude_visualizer_interface</span></code> here is what tells the cross-compile step to build our package
+into the static library alongside the standard messages. The empty <code class="docutils literal notranslate"><span class="pre">{}</span></code> means “use the
+default build settings, no overrides.”</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>After changing <code class="docutils literal notranslate"><span class="pre">colcon.meta</span></code> you must clean the micro-ROS library before rebuilding
+(<code class="docutils literal notranslate"><span class="pre">pio</span> <span class="pre">run</span> <span class="pre">-t</span> <span class="pre">clean_microros</span></code> then <code class="docutils literal notranslate"><span class="pre">pio</span> <span class="pre">run</span></code>). An incremental build sees no changed
+<code class="docutils literal notranslate"><span class="pre">.cpp</span></code> source and skips recompiling the library, silently ignoring the new message. The
+full step-by-step, including the <code class="docutils literal notranslate"><span class="pre">package.xml</span></code> rules a micro-ROS interface package must
+follow, lives in <code class="docutils literal notranslate"><span class="pre">MICROROS_NOTES.md</span></code> in the firmware project.</p>
+</div>
+<p><strong>The C naming rule.</strong> Once the package is compiled in, the message is used through C names,
+not the ROS 2 CamelCase names. The generator flattens
+<code class="docutils literal notranslate"><span class="pre">claude_visualizer_interface/msg/EncoderRaw</span></code> into:</p>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 36%" />
+<col style="width: 64%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Use</p></th>
+<th class="head"><p>C form</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>Type</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">claude_visualizer_interface__msg__EncoderRaw</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p>Include path</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">claude_visualizer_interface/msg/encoder_raw.h</span></code> (snake_case file name)</p></td>
+</tr>
+<tr class="row-even"><td><p>Type support</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">ROSIDL_GET_MSG_TYPE_SUPPORT(claude_visualizer_interface,</span> <span class="pre">msg,</span> <span class="pre">EncoderRaw)</span></code></p></td>
+</tr>
+</tbody>
+</table>
+<p>These three forms are exactly what you will see in the code below.</p>
+</section>
+<section id="node-workflow">
+<h2>Node Workflow<a class="headerlink" href="#node-workflow" title="Permalink to this heading"></a></h2>
+<p>A micro-ROS program has the same two-function shape as any Arduino sketch: <code class="docutils literal notranslate"><span class="pre">setup()</span></code> runs
+once to build everything, then <code class="docutils literal notranslate"><span class="pre">loop()</span></code> runs forever. All the real work happens inside a
+timer callback that the executor fires every 10 ms.</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>setup()  (runs once)
+  │
+  ├─ Serial.begin + set_microros_serial_transports   (open the USB link to the agent)
+  ├─ init_options + set_domain_id(156)               (join the same ROS domain as the host)
+  ├─ rclc_support_init                               (start the micro-ROS session)
+  ├─ rmw_uros_sync_session(1000)                     (sync clock to the agent&#39;s epoch)
+  ├─ rclc_node_init_default(... ROS_NAMESPACE ...)   (create node under /G&lt;N&gt;)
+  ├─ rclc_executor_init                              (create the callback scheduler)
+  ├─ rclc_publisher_init_default(... &quot;encoder_raw&quot;)  (publisher on relative topic)
+  ├─ rclc_timer_init_default(10 ms → timer_cb)       (create the 10 ms timer)
+  └─ rclc_executor_add_timer                         (hand the timer to the executor)
+
+loop()  (runs forever)
+  │
+  └─ rclc_executor_spin_some(20 ms)  ──────▶  every 10 ms the executor fires timer_cb
+                                                 │
+                                                 ▼
+                                       ┌──────────────────────────────────────┐
+                                       │ timer_cb()                           │
+                                       │   stamp  = rmw_uros_epoch_nanos()    │
+                                       │   ticks  = encoder.read()            │
+                                       │   raw_position = ticks2rad(ticks)    │
+                                       │   dt_us  = 10000                     │
+                                       │   publish /G&lt;N&gt;/encoder_raw          │
+                                       └──────────────────────────────────────┘
+</pre></div>
+</div>
+<p>The one part that is easy to get wrong is why <code class="docutils literal notranslate"><span class="pre">loop()</span></code> calls <code class="docutils literal notranslate"><span class="pre">rclc_executor_spin_some</span></code> and
+not the plain <code class="docutils literal notranslate"><span class="pre">spin</span></code>. The <strong>executor</strong> is micro-ROS’s callback scheduler: it holds the list
+of registered callbacks (here, just the timer) and runs the ones that are ready. <code class="docutils literal notranslate"><span class="pre">spin</span></code> would
+loop forever inside itself and never give control back, which would freeze Arduino’s own
+<code class="docutils literal notranslate"><span class="pre">loop()</span></code>. <code class="docutils literal notranslate"><span class="pre">spin_some</span></code> instead does one pass — run whatever is ready, wait up to a short
+timeout, then return — so <code class="docutils literal notranslate"><span class="pre">loop()</span></code> keeps cycling and any other Arduino code could still run.
+The 20 ms timeout is comfortably longer than the 10 ms timer period, so a firing is never
+missed.</p>
+</section>
+<section id="examine-the-code">
+<h2>Examine the code<a class="headerlink" href="#examine-the-code" title="Permalink to this heading"></a></h2>
+<p>The full firmware lives in <code class="docutils literal notranslate"><span class="pre">encoder_data_publisher/src/main.cpp</span></code>. This section walks through
+it block by block.</p>
+<p><strong>Pins and the tick-to-radian macro.</strong></p>
+<div class="highlight-cpp notranslate"><div class="highlight"><pre><span></span><span class="cp">#define LED_PIN 13</span>
+<span class="cp">#define EN_CH_A 7</span>
+<span class="cp">#define EN_CH_B 6</span>
+<span class="cp">#define EN_RES 8192.0</span>
+<span class="cp">#define ticks2rad(ticks) ((ticks/EN_RES)*2.0*PI)</span>
+</pre></div>
+</div>
+<p>These name the hardware pins and the encoder resolution. <code class="docutils literal notranslate"><span class="pre">EN_RES</span></code> is the number of ticks in
+one full turn, so <code class="docutils literal notranslate"><span class="pre">ticks2rad</span></code> converts a tick count to radians the same way the State
+Estimator does: one revolution is <code class="docutils literal notranslate"><span class="pre">EN_RES</span></code> ticks and <code class="docutils literal notranslate"><span class="pre">2π</span></code> radians, so the angle is
+<code class="docutils literal notranslate"><span class="pre">ticks</span> <span class="pre">/</span> <span class="pre">EN_RES</span> <span class="pre">×</span> <span class="pre">2π</span></code>. <code class="docutils literal notranslate"><span class="pre">LED_PIN</span></code> is the on-board LED, used later as an error light.</p>
+<p><strong>The group namespace.</strong></p>
+<div class="highlight-cpp notranslate"><div class="highlight"><pre><span></span><span class="cp">#define GROUP_NUMBER 1</span>
+<span class="cp">#define STR2(x) #x</span>
+<span class="cp">#define STR(x)  STR2(x)</span>
+<span class="cp">#define ROS_NAMESPACE &quot;G&quot; STR(GROUP_NUMBER)     </span><span class="c1">// → &quot;G0&quot;, &quot;G5&quot;, …</span>
+</pre></div>
+</div>
+<p>This turns the group number into the namespace string <code class="docutils literal notranslate"><span class="pre">&quot;G1&quot;</span></code>. The two-step
+<code class="docutils literal notranslate"><span class="pre">STR</span></code>/<code class="docutils literal notranslate"><span class="pre">STR2</span></code> trick is needed because the C preprocessor’s <code class="docutils literal notranslate"><span class="pre">#</span></code> stringize operator would
+otherwise turn <code class="docutils literal notranslate"><span class="pre">GROUP_NUMBER</span></code> into the literal text <code class="docutils literal notranslate"><span class="pre">&quot;GROUP_NUMBER&quot;</span></code> instead of its value.
+The inner macro expands <code class="docutils literal notranslate"><span class="pre">GROUP_NUMBER</span></code> to <code class="docutils literal notranslate"><span class="pre">1</span></code> first, then the outer one stringizes that to
+<code class="docutils literal notranslate"><span class="pre">&quot;1&quot;</span></code>, and the adjacent string literals <code class="docutils literal notranslate"><span class="pre">&quot;G&quot;</span></code> and <code class="docutils literal notranslate"><span class="pre">&quot;1&quot;</span></code> join into <code class="docutils literal notranslate"><span class="pre">&quot;G1&quot;</span></code> at compile
+time. Set <code class="docutils literal notranslate"><span class="pre">GROUP_NUMBER</span></code> per group and reflash.</p>
+<p><strong>Includes and the transport guard.</strong></p>
+<div class="highlight-cpp notranslate"><div class="highlight"><pre><span></span><span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;micro_ros_platformio.h&gt;</span>
+
+<span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;rcl/rcl.h&gt;</span>
+<span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;rclc/rclc.h&gt;</span>
+<span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;rclc/executor.h&gt;</span>
+
+<span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;std_msgs/msg/float32_multi_array.h&gt;</span>
+<span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;claude_visualizer_interface/msg/encoder_raw.h&gt;</span>
+<span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;rmw_microros/rmw_microros.h&gt;</span>
+
+<span class="cp">#include</span><span class="w"> </span><span class="cpf">&quot;Encoder.h&quot;</span>
+
+<span class="cp">#if !defined(MICRO_ROS_TRANSPORT_ARDUINO_SERIAL)</span>
+<span class="cp">#error This script is only available for Arduino framework with serial transport.</span>
+<span class="cp">#endif</span>
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">rcl</span></code> is the low-level ROS 2 client library in C, and <code class="docutils literal notranslate"><span class="pre">rclc</span></code> adds the executor and the
+simpler <code class="docutils literal notranslate"><span class="pre">_default</span></code> init helpers on top of it. The custom message comes in through
+<code class="docutils literal notranslate"><span class="pre">claude_visualizer_interface/msg/encoder_raw.h</span></code> — the snake_case header from the naming rule
+above. <code class="docutils literal notranslate"><span class="pre">rmw_microros.h</span></code> provides the clock-sync and epoch calls. The <code class="docutils literal notranslate"><span class="pre">#error</span></code> guard stops
+the build early with a clear message if the project is ever configured for a transport other
+than Arduino serial, instead of failing later with a confusing linker error.</p>
+<p><strong>Global entities and the return-code checks.</strong></p>
+<div class="highlight-cpp notranslate"><div class="highlight"><pre><span></span><span class="n">claude_visualizer_interface__msg__EncoderRaw</span><span class="w"> </span><span class="n">encoder_raw</span><span class="p">;</span>
+
+<span class="n">rclc_support_t</span><span class="w"> </span><span class="n">support</span><span class="p">;</span>
+<span class="n">rcl_allocator_t</span><span class="w"> </span><span class="n">allocator</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">rcl_get_default_allocator</span><span class="p">();</span>
+<span class="n">rclc_executor_t</span><span class="w"> </span><span class="n">executor</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">rclc_executor_get_zero_initialized_executor</span><span class="p">();</span>
+<span class="n">rcl_node_t</span><span class="w"> </span><span class="n">node</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">rcl_get_zero_initialized_node</span><span class="p">();</span>
+<span class="n">rcl_timer_t</span><span class="w"> </span><span class="n">timer</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">rcl_get_zero_initialized_timer</span><span class="p">();</span>
+<span class="n">rcl_publisher_t</span><span class="w"> </span><span class="n">encoder_data_publisher</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">rcl_get_zero_initialized_publisher</span><span class="p">();</span>
+
+<span class="cp">#define RCCHECK(fn) { rcl_ret_t temp_rc = fn; if((temp_rc != RCL_RET_OK)){_error_handler();}}</span>
+<span class="cp">#define RCSOFTCHECK(fn) { rcl_ret_t temp_rc = fn; if((temp_rc != RCL_RET_OK)){}}</span>
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">encoder_raw</span></code> is the one message object, filled in and reused every cycle. Below it are the
+micro-ROS entities. Three of them are the foundation objects every micro-ROS program needs: the
+<strong>allocator</strong> (how micro-ROS asks for and frees memory — spelled out here because a
+microcontroller has no garbage collector), the <strong>support</strong> object (the session, i.e. the
+connection to ROS 2), and the <strong>executor</strong> (the callback scheduler). The node, timer, and
+publisher are created from those. Each ROS call returns a status code, and the two macros
+check it: <code class="docutils literal notranslate"><span class="pre">RCCHECK</span></code> treats a failure as fatal and jumps to the error handler, while
+<code class="docutils literal notranslate"><span class="pre">RCSOFTCHECK</span></code> notes it but carries on — used for calls like publishing where one dropped
+sample is not worth halting the device. (<code class="docutils literal notranslate"><span class="pre">MICROROS_NOTES.md</span></code> explains the foundation objects
+and the zero-initialize pattern in more depth.)</p>
+<div class="highlight-cpp notranslate"><div class="highlight"><pre><span></span><span class="kt">void</span><span class="w"> </span><span class="nf">_error_handler</span><span class="p">(){</span>
+<span class="w">  </span><span class="kt">uint32_t</span><span class="w"> </span><span class="n">_error_handler_timestamp</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">millis</span><span class="p">();</span>
+<span class="w">  </span><span class="kt">uint8_t</span><span class="w"> </span><span class="n">_error_handler_timestep</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">200</span><span class="p">;</span>
+<span class="w">  </span><span class="k">while</span><span class="p">(</span><span class="nb">true</span><span class="p">){</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">millis</span><span class="p">()</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">_error_handler_timestamp</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="n">_error_handler_timestep</span><span class="p">){</span>
+<span class="w">      </span><span class="n">_error_handler_timestamp</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">millis</span><span class="p">();</span>
+<span class="w">      </span><span class="n">digitalToggle</span><span class="p">(</span><span class="n">LED_PIN</span><span class="p">);</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p>If a fatal call fails, the firmware stops here and blinks the on-board LED forever, toggling it
+every 200 ms. There is no screen on a microcontroller, so a steady blink is the signal that
+setup failed — usually because the agent is not running or the domain ID does not match.</p>
+<p><strong>The timer callback.</strong> This is the heart of the firmware; it runs once every 10 ms.</p>
+<div class="highlight-cpp notranslate"><div class="highlight"><pre><span></span><span class="kt">void</span><span class="w"> </span><span class="nf">timer_cb</span><span class="p">(</span><span class="n">rcl_timer_t</span><span class="w"> </span><span class="o">*</span><span class="n">timer</span><span class="p">,</span><span class="w"> </span><span class="kt">int64_t</span><span class="w"> </span><span class="n">last_call_time</span><span class="p">){</span>
+<span class="w">  </span><span class="n">RCLC_UNUSED</span><span class="p">(</span><span class="n">last_call_time</span><span class="p">);</span>
+
+<span class="w">  </span><span class="k">if</span><span class="p">(</span><span class="n">timer</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="nb">NULL</span><span class="p">){</span>
+<span class="w">    </span><span class="kt">int64_t</span><span class="w"> </span><span class="n">time_since_last_call</span><span class="p">;</span>
+<span class="w">    </span><span class="n">RCSOFTCHECK</span><span class="p">(</span><span class="n">rcl_timer_get_time_since_last_call</span><span class="p">(</span><span class="n">timer</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">time_since_last_call</span><span class="p">));</span>
+
+<span class="w">    </span><span class="c1">// Stamp using synced epoch time</span>
+<span class="w">    </span><span class="kt">int64_t</span><span class="w"> </span><span class="n">nanos</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">rmw_uros_epoch_nanos</span><span class="p">();</span>
+<span class="w">    </span><span class="n">encoder_raw</span><span class="p">.</span><span class="n">header</span><span class="p">.</span><span class="n">stamp</span><span class="p">.</span><span class="n">sec</span><span class="w">     </span><span class="o">=</span><span class="w"> </span><span class="p">(</span><span class="kt">int32_t</span><span class="p">)(</span><span class="n">nanos</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="mf">1000000000L</span><span class="n">L</span><span class="p">);</span>
+<span class="w">    </span><span class="n">encoder_raw</span><span class="p">.</span><span class="n">header</span><span class="p">.</span><span class="n">stamp</span><span class="p">.</span><span class="n">nanosec</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">(</span><span class="kt">uint32_t</span><span class="p">)(</span><span class="n">nanos</span><span class="w"> </span><span class="o">%</span><span class="w"> </span><span class="mf">1000000000L</span><span class="n">L</span><span class="p">);</span>
+
+<span class="w">    </span><span class="n">ticks</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">test_station_encoder</span><span class="p">.</span><span class="n">read</span><span class="p">();</span>
+<span class="w">    </span><span class="n">encoder_raw</span><span class="p">.</span><span class="n">ticks</span><span class="w">        </span><span class="o">=</span><span class="w"> </span><span class="n">ticks</span><span class="p">;</span>
+<span class="w">    </span><span class="n">encoder_raw</span><span class="p">.</span><span class="n">raw_position</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">ticks2rad</span><span class="p">(</span><span class="n">ticks</span><span class="p">);</span>
+<span class="w">    </span><span class="c1">// encoder_raw.dt_us        = (time_since_last_call % 1000000000) / 1000;</span>
+<span class="w">    </span><span class="n">encoder_raw</span><span class="p">.</span><span class="n">dt_us</span><span class="w">        </span><span class="o">=</span><span class="w"> </span><span class="mi">10000</span><span class="p">;</span>
+
+<span class="w">    </span><span class="n">RCSOFTCHECK</span><span class="p">(</span><span class="n">rcl_publish</span><span class="p">(</span><span class="o">&amp;</span><span class="n">encoder_data_publisher</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">encoder_raw</span><span class="p">,</span><span class="w"> </span><span class="nb">NULL</span><span class="p">));</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p>Each firing stamps the message with the synced epoch time (split into whole seconds and
+leftover nanoseconds, the shape the <code class="docutils literal notranslate"><span class="pre">header</span></code> expects), reads the current tick count from the
+encoder, converts it to radians, and publishes. Note the commented-out line: the firmware
+<em>could</em> report the real measured interval from <code class="docutils literal notranslate"><span class="pre">rcl_timer_get_time_since_last_call</span></code>, but
+instead <code class="docutils literal notranslate"><span class="pre">dt_us</span></code> is fixed at <code class="docutils literal notranslate"><span class="pre">10000</span></code>. The 10 ms timer is steady enough that a constant value
+is simpler and keeps the State Estimator’s maths predictable, so the measured value is left out
+on purpose.</p>
+<p><strong>Setup — session, node, and time sync.</strong></p>
+<div class="highlight-cpp notranslate"><div class="highlight"><pre><span></span><span class="kt">void</span><span class="w"> </span><span class="nf">setup</span><span class="p">(){</span>
+<span class="w">  </span><span class="c1">//config serial port</span>
+<span class="w">  </span><span class="n">Serial</span><span class="p">.</span><span class="n">begin</span><span class="p">(</span><span class="mi">115200</span><span class="p">);</span>
+<span class="w">  </span><span class="n">set_microros_serial_transports</span><span class="p">(</span><span class="n">Serial</span><span class="p">);</span>
+<span class="w">  </span><span class="p">...</span>
+<span class="w">  </span><span class="n">rcl_init_options_t</span><span class="w"> </span><span class="n">init_options</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">rcl_get_zero_initialized_init_options</span><span class="p">();</span>
+<span class="w">  </span><span class="n">RCCHECK</span><span class="p">(</span><span class="n">rcl_init_options_init</span><span class="p">(</span><span class="o">&amp;</span><span class="n">init_options</span><span class="p">,</span><span class="w"> </span><span class="n">allocator</span><span class="p">));</span>
+<span class="w">  </span><span class="n">RCCHECK</span><span class="p">(</span><span class="n">rcl_init_options_set_domain_id</span><span class="p">(</span><span class="o">&amp;</span><span class="n">init_options</span><span class="p">,</span><span class="w"> </span><span class="mi">156</span><span class="p">));</span><span class="w"> </span><span class="c1">// match ROS_DOMAIN_ID on host</span>
+<span class="w">  </span><span class="n">RCCHECK</span><span class="p">(</span><span class="n">rclc_support_init_with_options</span><span class="p">(</span><span class="o">&amp;</span><span class="n">support</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="nb">NULL</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">init_options</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">allocator</span><span class="p">));</span>
+<span class="w">  </span><span class="n">rmw_uros_sync_session</span><span class="p">(</span><span class="mi">1000</span><span class="p">);</span>
+</pre></div>
+</div>
+<p>First the USB serial link to the agent is opened at 115200 baud. Then the ROS domain is set to
+156 — this <strong>must</strong> equal <code class="docutils literal notranslate"><span class="pre">ROS_DOMAIN_ID</span></code> on the host, since nodes on different domains are
+invisible to each other. <code class="docutils literal notranslate"><span class="pre">rclc_support_init_with_options</span></code> starts the micro-ROS session with
+those options, and <code class="docutils literal notranslate"><span class="pre">rmw_uros_sync_session</span></code> performs the one-time clock sync so the timestamps
+in every message are real wall-clock time.</p>
+<p><strong>Setup — the node under the group namespace.</strong></p>
+<div class="highlight-cpp notranslate"><div class="highlight"><pre><span></span><span class="n">RCCHECK</span><span class="p">(</span><span class="n">rclc_node_init_default</span><span class="p">(</span>
+<span class="w">    </span><span class="o">&amp;</span><span class="n">node</span><span class="p">,</span>
+<span class="w">    </span><span class="s">&quot;encoder_data_publisher&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="n">ROS_NAMESPACE</span><span class="p">,</span><span class="w">                      </span><span class="c1">// now /G&lt;GROUP_NUMBER&gt;</span>
+<span class="w">    </span><span class="o">&amp;</span><span class="n">support</span>
+<span class="w">  </span><span class="p">)</span>
+<span class="p">);</span>
+</pre></div>
+</div>
+<p>This creates the node named <code class="docutils literal notranslate"><span class="pre">encoder_data_publisher</span></code> and places it under the namespace
+<code class="docutils literal notranslate"><span class="pre">ROS_NAMESPACE</span></code> (<code class="docutils literal notranslate"><span class="pre">/G1</span></code> for group 1). Everything the node publishes is prefixed with that
+namespace, which is how each group’s firmware stays on its own set of topics.</p>
+<p><strong>Setup — the publisher.</strong></p>
+<div class="highlight-cpp notranslate"><div class="highlight"><pre><span></span><span class="n">RCCHECK</span><span class="p">(</span><span class="n">rclc_publisher_init_default</span><span class="p">(</span>
+<span class="w">    </span><span class="o">&amp;</span><span class="n">encoder_data_publisher</span><span class="p">,</span>
+<span class="w">    </span><span class="o">&amp;</span><span class="n">node</span><span class="p">,</span>
+<span class="w">    </span><span class="n">ROSIDL_GET_MSG_TYPE_SUPPORT</span><span class="p">(</span><span class="n">claude_visualizer_interface</span><span class="p">,</span><span class="w"> </span><span class="n">msg</span><span class="p">,</span><span class="w"> </span><span class="n">EncoderRaw</span><span class="p">),</span>
+<span class="w">    </span><span class="c1">// &quot;/encoder_raw&quot;                   // was absolute (ignored the namespace)</span>
+<span class="w">    </span><span class="s">&quot;encoder_raw&quot;</span><span class="w">                       </span><span class="c1">// relative → /G&lt;GROUP_NUMBER&gt;/encoder_raw</span>
+<span class="w">  </span><span class="p">)</span>
+<span class="p">);</span>
+</pre></div>
+</div>
+<p>The publisher is bound to the custom message through the type-support macro — the third C form
+from the naming rule. The topic name is the <strong>relative</strong> <code class="docutils literal notranslate"><span class="pre">&quot;encoder_raw&quot;</span></code>, so the node
+namespace is added in front to give <code class="docutils literal notranslate"><span class="pre">/G&lt;N&gt;/encoder_raw</span></code>. The commented-out <code class="docutils literal notranslate"><span class="pre">&quot;/encoder_raw&quot;</span></code>
+is the earlier absolute version: a leading slash makes the name absolute, which ignores the
+namespace and would put every group on the same topic — exactly what the relative name avoids.</p>
+<p><strong>Setup — the timer and executor.</strong></p>
+<div class="highlight-cpp notranslate"><div class="highlight"><pre><span></span><span class="w">  </span><span class="k">const</span><span class="w"> </span><span class="kt">unsigned</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">timestep</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">10</span><span class="p">;</span><span class="w"> </span><span class="c1">//[ms]</span>
+<span class="w">  </span><span class="n">RCCHECK</span><span class="p">(</span><span class="n">rclc_timer_init_default</span><span class="p">(</span>
+<span class="w">      </span><span class="o">&amp;</span><span class="n">timer</span><span class="p">,</span>
+<span class="w">      </span><span class="o">&amp;</span><span class="n">support</span><span class="p">,</span>
+<span class="w">      </span><span class="n">RCL_MS_TO_NS</span><span class="p">(</span><span class="n">timestep</span><span class="p">),</span>
+<span class="w">      </span><span class="n">timer_cb</span>
+<span class="w">    </span><span class="p">)</span>
+<span class="w">  </span><span class="p">);</span>
+
+<span class="w">  </span><span class="n">RCCHECK</span><span class="p">(</span><span class="n">rclc_executor_add_timer</span><span class="p">(</span><span class="o">&amp;</span><span class="n">executor</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">timer</span><span class="p">));</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p>The timer is created with a 10 ms period (converted to nanoseconds by <code class="docutils literal notranslate"><span class="pre">RCL_MS_TO_NS</span></code>) and
+told to call <code class="docutils literal notranslate"><span class="pre">timer_cb</span></code> each time it fires. The last line registers the timer with the
+executor, so from now on the executor knows to run <code class="docutils literal notranslate"><span class="pre">timer_cb</span></code> whenever 10 ms has passed. The
+executor itself was created just above this block with room for one handle — the single timer.</p>
+<p><strong>Loop.</strong></p>
+<div class="highlight-cpp notranslate"><div class="highlight"><pre><span></span><span class="kt">void</span><span class="w"> </span><span class="nf">loop</span><span class="p">(){</span>
+<span class="w">  </span><span class="n">RCSOFTCHECK</span><span class="p">(</span><span class="n">rclc_executor_spin_some</span><span class="p">(</span><span class="o">&amp;</span><span class="n">executor</span><span class="p">,</span><span class="w"> </span><span class="n">RCL_MS_TO_NS</span><span class="p">(</span><span class="mi">20</span><span class="p">)));</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p>The main loop does one thing: give the executor a chance to run any ready callback, waiting up
+to 20 ms. Arduino calls <code class="docutils literal notranslate"><span class="pre">loop()</span></code> over and over on its own, so this repeated <code class="docutils literal notranslate"><span class="pre">spin_some</span></code> is
+what keeps the 10 ms timer firing and the messages flowing. (The original file also has a
+commented-out serial-debug branch that printed raw ticks to the serial monitor instead of
+publishing — handy while bringing the board up, switched off in normal operation.)</p>
+</section>
+<section id="notation">
+<h2>Notation<a class="headerlink" href="#notation" title="Permalink to this heading"></a></h2>
+<p>Words used on this page.</p>
+<dl class="simple">
+<dt>micro-ROS</dt><dd><p>A cut-down version of ROS 2 for microcontrollers. It uses the <code class="docutils literal notranslate"><span class="pre">rclc</span></code> C library and a
+lightweight transport instead of full DDS.</p>
+</dd>
+<dt>micro-ROS agent</dt><dd><p>A small program on the host PC that bridges a micro-ROS device to the real ROS 2 network.
+The Teensy talks only to the agent; the agent publishes the actual topics.</p>
+</dd>
+<dt>rcl vs rclc</dt><dd><p><code class="docutils literal notranslate"><span class="pre">rcl</span></code> is the low-level ROS 2 client library in C — it owns the node, publisher and timer
+types. <code class="docutils literal notranslate"><span class="pre">rclc</span></code> sits on top and adds the executor and the simpler <code class="docutils literal notranslate"><span class="pre">_default</span></code> init helpers.</p>
+</dd>
+<dt>executor / spin_some</dt><dd><p>The <strong>executor</strong> is the scheduler that runs registered callbacks. <code class="docutils literal notranslate"><span class="pre">spin_some</span></code> runs the
+ready ones once and returns, so the Arduino <code class="docutils literal notranslate"><span class="pre">loop()</span></code> keeps cycling — unlike <code class="docutils literal notranslate"><span class="pre">spin</span></code>,
+which never returns.</p>
+</dd>
+<dt>allocator / support</dt><dd><p>The <strong>allocator</strong> is how micro-ROS asks for and frees memory (spelled out because there is
+no garbage collector on the chip). The <strong>support</strong> object is the session — the connection
+to ROS 2 that the node and timer are created from.</p>
+</dd>
+<dt>type support</dt><dd><p>A description of a message’s layout that a publisher needs in order to send it. Obtained
+with the <code class="docutils literal notranslate"><span class="pre">ROSIDL_GET_MSG_TYPE_SUPPORT</span></code> macro.</p>
+</dd>
+<dt>XRCE-DDS</dt><dd><p>The lightweight transport micro-ROS uses over serial in place of full DDS. It is what the
+Teensy and the agent speak to each other.</p>
+</dd>
+<dt>domain ID</dt><dd><p>A number that partitions a ROS 2 network. Only nodes on the same domain ID can see each
+other, so the firmware’s <code class="docutils literal notranslate"><span class="pre">156</span></code> must match <code class="docutils literal notranslate"><span class="pre">ROS_DOMAIN_ID</span></code> on the host.</p>
+</dd>
+<dt>quadrature encoder / ticks</dt><dd><p>A sensor that reports shaft rotation as a stream of counts (<strong>ticks</strong>) on two channels.
+The count is cumulative and signed; <code class="docutils literal notranslate"><span class="pre">ticks2rad</span></code> turns it into an angle.</p>
+</dd>
+<dt>extra package / colcon.meta</dt><dd><p><code class="docutils literal notranslate"><span class="pre">extra_packages/</span></code> is the folder where the micro-ROS build looks for custom message
+packages, and <code class="docutils literal notranslate"><span class="pre">colcon.meta</span></code> is the file that lists which of them to compile into the
+firmware’s static library.</p>
+</dd>
+<dt>namespace <code class="docutils literal notranslate"><span class="pre">/G&lt;N&gt;</span></code></dt><dd><p>The prefix added to every relative topic name, set from <code class="docutils literal notranslate"><span class="pre">GROUP_NUMBER</span></code>. It keeps each
+group’s topics separate on a shared network.</p>
+</dd>
+</dl>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2026, Institute of Field Robotics.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

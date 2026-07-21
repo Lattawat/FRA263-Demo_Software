@@ -1,0 +1,1262 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.18.1: http://docutils.sourceforge.net/" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Experiment Evaluator Node &mdash; FRA263 Software 0.1 documentation</title>
+      <link rel="stylesheet" href="../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../_static/css/theme.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script src="../_static/jquery.js?v=5d32c60e"></script>
+        <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+        <script data-url_root="../" id="documentation_options" src="../_static/documentation_options.js?v=e031e9a9"></script>
+        <script src="../_static/doctools.js?v=888ff710"></script>
+        <script src="../_static/sphinx_highlight.js?v=4825356b"></script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../index.html" class="icon icon-home">
+            FRA263 Software
+          </a>
+              <div class="version">
+                0.1.0
+              </div>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+<li class="toctree-l1"><a class="reference internal" href="../system_overview.html">System Architecture &amp; Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../get_started.html">Getting Started</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Base%20System.html">Base System</a></li>
+<li class="toctree-l1"><a class="reference internal" href="verification_system.html">Verification System Implementation</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">FRA263 Software</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Experiment Evaluator Node</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/verification_system/experiment_evaluator_node.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="experiment-evaluator-node">
+<h1>Experiment Evaluator Node<a class="headerlink" href="#experiment-evaluator-node" title="Permalink to this heading"></a></h1>
+<p><strong>Automatic Robot’s Performance Evaluation</strong></p>
+<p>This node is the judge of the Verification System. Before, a person had to watch the
+logged data by eye and decide whether the robot performed well; the node
+<code class="docutils literal notranslate"><span class="pre">experiment_evaluator</span></code> does it automatically. It is <strong>event-driven</strong> (it does nothing
+until a message tells it to act): it sits idle until a start event arrives on
+<code class="docutils literal notranslate"><span class="pre">/event_trigger</span></code>, then measures every <code class="docutils literal notranslate"><span class="pre">/estimated_states</span></code> sample, publishes live
+metrics while the run is going, and ends with one final <strong>pass/fail summary</strong>.</p>
+<p>The node can evaluate the robot in <strong>four test aspects</strong>, and each aspect has its own
+evaluation algorithm (explained one by one in the Node Workflow section):</p>
+<ol class="arabic simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">point_to_point</span></code> — move by a commanded distance; scored on settling time,
+overshoot, and final error.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">pick_place</span></code> — visit a sequence of hole positions; every waypoint is scored
+separately.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">performance</span></code> — reach a commanded speed and acceleration; scored on the peaks.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">precision</span></code> — repeat the same move many times; scored on accuracy (mean error)
+and precision (spread of the results).</p></li>
+</ol>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>[ from web_visualizer ]         ┌──────────────────────────┐       [ to web_visualizer ]
+/event_trigger  ──────────────▶ │                          │ ────▶ /eval_live      (pub, 10 Hz)
+(start / stop / skip events)    │   experiment_evaluator   │       live metrics during a run
+                                │                          │
+[ from State Estimator ]        │   4 test aspects,        │ ────▶ /eval_summary   (pub, once)
+/estimated_states ────────────▶ │   1 measuring loop       │       final pass/fail verdict
+(position, velocity, accel)     │                          │
+                                │                          │ ◀──▶ update_criteria (service server)
+                                └──────────────────────────┘       read / change limits live
+</pre></div>
+</div>
+<p><strong>Parameters.</strong></p>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 28%" />
+<col style="width: 16%" />
+<col style="width: 56%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Parameter</p></th>
+<th class="head"><p>Value</p></th>
+<th class="head"><p>Meaning</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">group_number</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;0&quot;</span></code></p></td>
+<td><p>Selects the group’s row in <code class="docutils literal notranslate"><span class="pre">criteria.yaml</span></code>. Declared with <em>dynamic typing</em>
+(accepts both int and string) because the launch file may pass <code class="docutils literal notranslate"><span class="pre">5</span></code> as an int
+while the standalone default is the string <code class="docutils literal notranslate"><span class="pre">&quot;0&quot;</span></code>.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">criteria_file_path</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;&quot;</span></code></p></td>
+<td><p>Path to <code class="docutils literal notranslate"><span class="pre">criteria.yaml</span></code>. Empty or missing → the node falls back to a
+hardcoded default set and warns.</p></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Criteria — the pass/fail limits.</strong> All scoring compares the measured values against
+six limits. The values below are the <code class="docutils literal notranslate"><span class="pre">default</span></code> row of <code class="docutils literal notranslate"><span class="pre">criteria.yaml</span></code>; each group can
+have its own row (keyed by <code class="docutils literal notranslate"><span class="pre">group_number</span></code>):</p>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 26%" />
+<col style="width: 12%" />
+<col style="width: 10%" />
+<col style="width: 22%" />
+<col style="width: 30%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Criterion</p></th>
+<th class="head"><p>Default</p></th>
+<th class="head"><p>Unit</p></th>
+<th class="head"><p>Used by</p></th>
+<th class="head"><p>Meaning</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">min_speed</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">3.0</span></code></p></td>
+<td><p>rad/s</p></td>
+<td><p>performance</p></td>
+<td><p>The peak speed must reach at least this (fallback when the payload gives no
+commanded speed).</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">min_acceleration</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">4.0</span></code></p></td>
+<td><p>rad/s²</p></td>
+<td><p>performance</p></td>
+<td><p>Same idea for the peak acceleration.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">max_avg_error_rad</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">0.1</span></code></p></td>
+<td><p>rad</p></td>
+<td><p>point_to_point, pick_place, precision</p></td>
+<td><p>The largest allowed (average) position error.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">max_overshoot_pct</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">10.0</span></code></p></td>
+<td><p>% of travel</p></td>
+<td><p>point_to_point, pick_place</p></td>
+<td><p>How far past the target the robot may go.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">max_settling_time_s</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">5.0</span></code></p></td>
+<td><p>s</p></td>
+<td><p>point_to_point, pick_place</p></td>
+<td><p>How long the robot may take to settle, timed from the first entry into the
+settling band.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">settling_band_pct</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">3.0</span></code></p></td>
+<td><p>% of travel</p></td>
+<td><p>point_to_point, pick_place, precision</p></td>
+<td><p>The width of the settling band (see the shared building block below).</p></td>
+</tr>
+</tbody>
+</table>
+<p>There are <strong>two ways to change the criteria</strong>: (1) edit the group’s row in
+<code class="docutils literal notranslate"><span class="pre">criteria.yaml</span></code> before launch, or (2) change them <strong>live</strong> from the browser’s Criteria
+tab — the web visualizer calls this node’s <code class="docutils literal notranslate"><span class="pre">update_criteria</span></code> service, and the change
+applies immediately without a restart.</p>
+<p><strong>Units.</strong> Test payloads carry a <code class="docutils literal notranslate"><span class="pre">unit</span></code> field. The helper <code class="docutils literal notranslate"><span class="pre">_to_rad</span></code> converts
+<code class="docutils literal notranslate"><span class="pre">index</span></code> (one hole on the 72-hole plate: 360/72 = <strong>5°</strong> ≈ 0.08727 rad) or <code class="docutils literal notranslate"><span class="pre">degree</span></code>
+into radians; anything else is assumed to be radians already.</p>
+<p><strong>Interfaces.</strong> Two subscriptions, two publishers, and one service — and each one has a
+clear reason to exist:</p>
+<ul class="simple">
+<li><p><strong>Subscribes</strong> <code class="docutils literal notranslate"><span class="pre">/event_trigger</span></code> (<code class="docutils literal notranslate"><span class="pre">EventTrigger</span></code>) — the node’s <em>ears</em>. Every start,
+stop, and skip arrives here (from the Base System through the LSL bridge, or from the
+browser buttons). Without it the evaluator would never know a test began — it would sit
+idle forever.</p></li>
+<li><p><strong>Subscribes</strong> <code class="docutils literal notranslate"><span class="pre">/estimated_states</span></code> (<code class="docutils literal notranslate"><span class="pre">EncoderState</span></code>) — the node’s <em>measurement
+source</em>. Every metric it produces (error, overshoot, settling time, peaks, precision)
+is computed from these position/velocity/acceleration samples coming from the State
+Estimator.</p></li>
+<li><p><strong>Publishes</strong> <code class="docutils literal notranslate"><span class="pre">/eval_live</span></code> (<code class="docutils literal notranslate"><span class="pre">ExperimentEval</span></code>, throttled to 10 Hz) — feeds the live
+evaluation panel in the browser, so the lecturer can watch the run progressing
+(current error, waypoint counter, phase reference). It is throttled (deliberately
+rate-limited) so the UI is not flooded with hundreds of messages per second.</p></li>
+<li><p><strong>Publishes</strong> <code class="docutils literal notranslate"><span class="pre">/eval_summary</span></code> (<code class="docutils literal notranslate"><span class="pre">ExperimentEval</span></code>, once per run) — the final verdict.
+This single message with the pass/fail result is the product the whole Verification
+System exists to deliver; the UI displays it as the run’s result.</p></li>
+<li><p><strong>Serves</strong> <code class="docutils literal notranslate"><span class="pre">update_criteria</span></code> (<code class="docutils literal notranslate"><span class="pre">UpdateCriteria</span></code>) — the service <strong>server</strong> (the
+answering side; the web visualizer holds the matching client). It lets the lecturer
+read and change the pass/fail limits live from the browser, without restarting the
+node or editing the file mid-demo.</p></li>
+</ul>
+<p>Both <code class="docutils literal notranslate"><span class="pre">ExperimentEval</span></code> messages carry the same shape: an <code class="docutils literal notranslate"><span class="pre">action</span></code> string naming the
+test aspect, and a <code class="docutils literal notranslate"><span class="pre">data</span></code> string holding the metrics as JSON. As in the other nodes,
+all names are <strong>relative</strong> (the launch namespace <code class="docutils literal notranslate"><span class="pre">/G&lt;N&gt;/</span></code> is added in front) and the
+QoS profile is <strong>RELIABLE</strong> with <strong>KEEP_LAST depth 10</strong>.</p>
+<section id="node-workflow">
+<h2>Node Workflow<a class="headerlink" href="#node-workflow" title="Permalink to this heading"></a></h2>
+<p>Unlike the web visualizer, this node has no extra threads — everything runs in the two
+subscription callbacks. What plays the role of the “workers” here are the <strong>four
+evaluation algorithms</strong> that share one measuring loop. This section starts with the big
+picture, then one shared building block, then each test aspect with its own algorithm.</p>
+<section id="the-big-picture">
+<h3>The big picture<a class="headerlink" href="#the-big-picture" title="Permalink to this heading"></a></h3>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>[callback: _event_trigger_cb — the router]
+/event_trigger ──▶ parse the JSON payload
+     ├─ mode &quot;STOP&quot; / action &quot;stop&quot;      ──▶ finish the run now (publish the summary)
+     ├─ action &quot;skip_iteration&quot;          ──▶ skip the current waypoint / trial
+     ├─ action is one of the 4 aspects   ──▶ reset all state, start measuring
+     └─ anything else                    ──▶ warn and ignore
+
+─────────────────────────────────────────────────────────────────────────────────
+
+[callback: _estimated_states_cb — the measuring loop, runs once per sample]
+/estimated_states ──▶ no active run? ──▶ ignore the sample
+     │ a run is active
+     ▼
+first sample of this run? ──▶ store the start position + start time
+     ▼
+append (position, velocity, acceleration) to the sample list
+     ▼
+dispatch to the active aspect&#39;s update function:
+     point_to_point → _update_ptp        pick_place → _update_pp
+     performance    → _update_perf       precision  → _update_prec
+     ▼
+≥ 0.1 s since the last live message? ──▶ publish /eval_live   (throttle: 10 Hz)
+</pre></div>
+</div>
+<p>The whole life of one experiment is then:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>idle ──start event──▶ measuring ──(settled / last waypoint / repeat reached / STOP)──▶
+                       publish /eval_summary ──▶ back to idle
+</pre></div>
+</div>
+<p>A run can end <strong>by itself</strong> (point-to-point settles, the last waypoint settles, the
+precision cycles are complete) or <strong>by the user</strong> (the STOP button). Either way the
+summary is computed from whatever was collected up to that moment.</p>
+</section>
+<section id="shared-building-block-the-settling-band">
+<h3>Shared building block: the settling band<a class="headerlink" href="#shared-building-block-the-settling-band" title="Permalink to this heading"></a></h3>
+<p>Three of the four aspects (all except <code class="docutils literal notranslate"><span class="pre">performance</span></code>) decide “the robot has arrived”
+the same way, so the rule is explained once here. The <strong>settling band</strong> is a small error
+window around the target:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>band = max(0.01 rad, settling_band_pct % × |travel|)
+
+every sample:  error = |position − target|
+
+error &lt; band ? ──no──▶ reset the 0.5 s counter (left the band → not settled)
+     │ yes
+     ▼
+first time ever inside the band? ──▶ remember this moment (the settling clock starts)
+     ▼
+inside the band continuously for ≥ 0.5 s ?
+     │ yes
+     ▼
+SETTLED — settling time = now − first band entry
+</pre></div>
+</div>
+<p>Two details to notice. The band scales with the <strong>travel distance</strong> (3 % of a long move
+is wider than 3 % of a short one), but never gets thinner than the <strong>0.01 rad floor</strong> —
+otherwise a tiny move would create an impossibly thin band. And the settling time is
+counted from the <strong>first</strong> band entry, not the last: if the robot enters the band,
+bounces out, and comes back, that bouncing time counts against it. The 0.5 s continuous
+stay (the <em>settling window</em>) is what separates “passing through the target” from
+“actually stopped there”.</p>
+</section>
+<section id="point-to-point-test">
+<h3>Point-to-Point test<a class="headerlink" href="#point-to-point-test" title="Permalink to this heading"></a></h3>
+<p><strong>Objective:</strong> move by a commanded distance and stop there — the basic positioning test.
+The payload gives the distance: <code class="docutils literal notranslate"><span class="pre">{&quot;action&quot;:</span> <span class="pre">&quot;point_to_point&quot;,</span> <span class="pre">&quot;value&quot;:</span> <span class="pre">&lt;number&gt;,</span>
+<span class="pre">&quot;unit&quot;:</span> <span class="pre">&quot;index&quot;</span> <span class="pre">|</span> <span class="pre">&quot;degree&quot;</span> <span class="pre">|</span> <span class="pre">...}</span></code>.</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>start event ──▶ target = start position + travel      (travel = value → rad)
+                band   = max(0.01 rad, settling_band_pct % × |travel|)
+
+every sample:
+     │
+     ▼
+error = |position − target|  &lt;  band ?  ──no──▶ reset the continuous counter
+     │ yes
+     ▼
+settled? (continuously in band ≥ 0.5 s)  ──no──▶ keep counting
+     │ yes
+     ▼
+settling time = now − first band entry
+     │
+     ▼
+AUTO-FINISH ──▶ /eval_summary
+</pre></div>
+</div>
+<p>The run finishes <strong>by itself</strong> the moment the robot settles. If the robot never settles,
+only the STOP button ends it — the summary then reports no settling time and fails that
+criterion.</p>
+<p><strong>Summary and pass rules.</strong> The final error is taken from the last sample; the overshoot
+is found by scanning all samples for the farthest point <strong>past the target in the travel
+direction</strong>, given as a percentage of the travel:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">pass_final_error</span></code> — final error ≤ <code class="docutils literal notranslate"><span class="pre">max_avg_error_rad</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">pass_overshoot</span></code> — settled <strong>and</strong> overshoot ≤ <code class="docutils literal notranslate"><span class="pre">max_overshoot_pct</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">pass_settling</span></code> — settling time ≤ <code class="docutils literal notranslate"><span class="pre">max_settling_time_s</span></code></p></li>
+</ul>
+<p>The live message (10 Hz) carries the target, current position, current error, and the
+elapsed time.</p>
+</section>
+<section id="pick-and-place-test">
+<h3>Pick-and-Place test<a class="headerlink" href="#pick-and-place-test" title="Permalink to this heading"></a></h3>
+<p><strong>Objective:</strong> visit a sequence of holes in order — the multi-target test. The payload
+gives the plan: <code class="docutils literal notranslate"><span class="pre">{&quot;action&quot;:</span> <span class="pre">&quot;pick_place&quot;,</span> <span class="pre">&quot;order_sequence&quot;:</span> <span class="pre">[i₁,</span> <span class="pre">i₂,</span> <span class="pre">...]}</span></code> where each
+entry is a <strong>hole index</strong> (target = index × 5°). Every waypoint (one target in the
+sequence) is scored on its own:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>for one waypoint at a time:
+     target = index × RAD_PER_INDEX
+     travel = target − previous target     (first waypoint: from the start position)
+     band   = max(0.01 rad, settling_band_pct % × |travel|)
+     │
+     ▼
+robot enters the band for the FIRST time
+     ├─ the settling clock starts
+     └─ peak tracking starts               (for the overshoot, direction-aware)
+     │
+     ▼
+settled? (continuously in band ≥ 0.5 s)
+     │ yes
+     ▼
+score the waypoint:  final error │ overshoot % (from the tracked peak) │ settling time
+                     + 3 pass flags against the criteria
+     │
+     ├─ more waypoints left ──▶ baseline = this target ; next waypoint
+     └─ last waypoint       ──▶ AUTO-FINISH ──▶ /eval_summary
+
+─────────────────────────────────────────────────────────────────────────────────
+
+[Skip Iteration] pressed while a waypoint is stuck:
+     record it as skipped  (all pass flags = false, excluded from the average error)
+     baseline for the next waypoint = the robot&#39;s ACTUAL current position
+                                      (not the unreached target)
+</pre></div>
+</div>
+<p>Two design details. The <strong>travel baseline</strong> of each waypoint is the <em>previous target</em>,
+so the band and overshoot are measured over the intended move. But after a <strong>skip</strong>, the
+baseline becomes the robot’s actual current position — the robot never reached the old
+target, so measuring the next move from a position the robot never held would distort
+its band and overshoot. And the peak tracking is <strong>direction-aware</strong>: for a positive
+travel the peak is the maximum position, for a negative travel the minimum, so
+“overshoot” always means “past the target”, whichever way the robot moves.</p>
+<p><strong>Summary.</strong> Total waypoints, the average error over the <em>scored</em> (non-skipped)
+waypoints with its pass flag, the passed / failed / skipped counts, and the full
+per-waypoint details list. The live message carries the current waypoint number, total,
+target, current error, and elapsed time.</p>
+</section>
+<section id="performance-test">
+<h3>Performance test<a class="headerlink" href="#performance-test" title="Permalink to this heading"></a></h3>
+<p><strong>Objective:</strong> show that the robot can actually reach the speed and acceleration it was
+commanded — the raw capability test. This is the simplest algorithm of the four:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>every sample:   peak_speed = max(peak_speed, |velocity|)
+                peak_accel = max(peak_accel, |acceleration|)
+
+...runs until the user presses STOP ──▶ /eval_summary
+     pass_speed = peak_speed ≥ commanded speed
+     pass_accel = peak_accel ≥ commanded acceleration
+</pre></div>
+</div>
+<p>There is no settling and no auto-finish — the node just remembers the highest absolute
+speed and acceleration it has seen, and the user decides when the demonstration is over.
+The commanded values come from the payload (<code class="docutils literal notranslate"><span class="pre">speed</span></code>, <code class="docutils literal notranslate"><span class="pre">accel</span></code>); if the payload does
+not give them, the criteria minimums (<code class="docutils literal notranslate"><span class="pre">min_speed</span></code>, <code class="docutils literal notranslate"><span class="pre">min_acceleration</span></code>) are used as
+the fallback. Note the comparison direction: unlike the error limits, these are
+<strong>minimums</strong> — the peak must be <em>at least</em> the commanded value.</p>
+<p>The live message carries both peaks, the current speed, and the elapsed time.</p>
+</section>
+<section id="precision-test">
+<h3>Precision test<a class="headerlink" href="#precision-test" title="Permalink to this heading"></a></h3>
+<p><strong>Objective:</strong> repeat the same move many times and measure how <em>repeatable</em> the robot is.
+One run = <code class="docutils literal notranslate"><span class="pre">repeat</span></code> cycles of <strong>init → target → init</strong>. The payload:
+<code class="docutils literal notranslate"><span class="pre">{&quot;action&quot;:</span> <span class="pre">&quot;precision&quot;,</span> <span class="pre">&quot;init_pos&quot;:</span> <span class="pre">...,</span> <span class="pre">&quot;target_pos&quot;:</span> <span class="pre">...,</span> <span class="pre">&quot;unit&quot;:</span> <span class="pre">...,</span> <span class="pre">&quot;repeat&quot;:</span> <span class="pre">N}</span></code>.</p>
+<p>Each cycle has <strong>two phases</strong>, and each phase collects one settled position:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>band          = max(0.01 rad, settling_band_pct % × travel)
+counting band = 50 % × travel        (used only by the auto-skip timeout)
+
+┌──────────────────────────── one cycle ────────────────────────────┐
+
+PHASE 1 — approach (init → target)
+     settle at the target (0.5 s in band)
+          ──▶ record the settled position into the TARGET group
+          ──▶ flip to phase 2
+     auto-skip: the robot crossed the 50 % counting band but never settles,
+     and the phase has run longer than
+          2 × (time it took to reach 50 %) + 1 s buffer
+          ──▶ count a target skip, flip to phase 2 anyway
+     │
+     ▼
+PHASE 2 — return (target → init)
+     settle at init (0.5 s in band)
+          ──▶ record the settled position into the RETURN group
+          ──▶ one full cycle done, flip back to phase 1
+     auto-skip: same timeout rule, mirrored toward init
+          ──▶ count a return skip, flip back to phase 1
+     │
+     ▼
+returns done + returns skipped ≥ repeat ?  ──no──▶ next cycle
+     │ yes
+     ▼
+FINISH ──▶ /eval_summary
+</pre></div>
+</div>
+<p>Three design details:</p>
+<ul class="simple">
+<li><p><strong>The auto-skip timeout</strong> protects the run from a stuck robot without any fixed magic
+number. When the robot crosses the halfway point (the 50 % <em>counting band</em>), the node
+stamps that time. A healthy move should finish in roughly twice the time it took to
+cover the first half — so if the phase runs past <em>2 × time-to-halfway + 1 s buffer</em>
+without settling, the node force-skips the phase by itself. The manual <strong>Skip
+Iteration</strong> button funnels into the same function (<code class="docutils literal notranslate"><span class="pre">_skip_trial</span></code>), which picks the
+right skip counter from the <em>current</em> phase before flipping it.</p></li>
+<li><p><strong>Termination lives in the return phase</strong>: the run ends when <em>returns done + returns
+skipped</em> reaches <code class="docutils literal notranslate"><span class="pre">repeat</span></code>. Ending on the return (not the approach) means the final
+trial still drives back to init — the robot always finishes the run at home.</p></li>
+<li><p><strong>The live reference follows the active phase</strong>: while approaching, the live message’s
+<code class="docutils literal notranslate"><span class="pre">target_rad</span></code> is the target; while returning, it is init. The amber reference line in
+the browser therefore tracks what the robot is <em>currently</em> trying to reach, with no
+extra logic on the browser side.</p></li>
+</ul>
+<p><strong>Summary.</strong> Two groups, scored with the same rule: the <strong>target group</strong> (all settled
+positions at the target — the init→target reaching performance) and the <strong>return group</strong>
+(all settled positions at init — the returning performance). Each group reports the
+number of trials and skips, the <strong>mean error</strong> (accuracy — how close on average), the
+<strong>standard deviation</strong> (precision — how repeatable), the max error, and a pass flag
+(all <code class="docutils literal notranslate"><span class="pre">repeat</span></code> trials done and mean error ≤ <code class="docutils literal notranslate"><span class="pre">max_avg_error_rad</span></code>).</p>
+</section>
+</section>
+<section id="examine-the-code">
+<h2>Examine the code<a class="headerlink" href="#examine-the-code" title="Permalink to this heading"></a></h2>
+<p>The full node lives in <code class="docutils literal notranslate"><span class="pre">scripts/experiment_evaluator.py</span></code> (about 775 lines). As on the
+web-visualizer page, the walkthrough is complete but condensed: commented-out legacy
+lines are trimmed from the excerpts, while the meaningful comments and docstrings stay.</p>
+<p><strong>Imports and constants.</strong></p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">json</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">math</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">rclpy</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">rclpy.node</span><span class="w"> </span><span class="kn">import</span> <span class="n">Node</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">rclpy.qos</span><span class="w"> </span><span class="kn">import</span> <span class="n">QoSProfile</span><span class="p">,</span> <span class="n">ReliabilityPolicy</span><span class="p">,</span> <span class="n">HistoryPolicy</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">rcl_interfaces.msg</span><span class="w"> </span><span class="kn">import</span> <span class="n">ParameterDescriptor</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">yaml</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">claude_visualizer_interface.msg</span><span class="w"> </span><span class="kn">import</span> <span class="n">EventTrigger</span><span class="p">,</span> <span class="n">EncoderState</span><span class="p">,</span> <span class="n">ExperimentEval</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">claude_visualizer_interface.srv</span><span class="w"> </span><span class="kn">import</span> <span class="n">UpdateCriteria</span>
+
+
+<span class="c1"># ── constants ────────────────────────────────────────────────────────────────</span>
+<span class="n">N_HOLES</span>              <span class="o">=</span> <span class="mi">72</span>
+<span class="n">DEG_PER_INDEX</span>        <span class="o">=</span> <span class="mf">360.0</span> <span class="o">/</span> <span class="n">N_HOLES</span>                     <span class="c1"># [deg/index]</span>
+<span class="n">RAD_PER_INDEX</span>        <span class="o">=</span> <span class="n">DEG_PER_INDEX</span> <span class="o">*</span> <span class="n">math</span><span class="o">.</span><span class="n">pi</span> <span class="o">/</span> <span class="mf">180.0</span>     <span class="c1"># [rad/index] ≈ 0.08727</span>
+
+<span class="n">SETTLING_THRESHOLD_rad</span> <span class="o">=</span> <span class="mf">0.01</span>   <span class="c1"># hard floor for settling band  [rad]</span>
+<span class="n">SETTLING_WINDOW_s</span>      <span class="o">=</span> <span class="mf">0.5</span>    <span class="c1"># continuous in-band time to declare settled  [s]</span>
+<span class="n">LIVE_PUB_INTERVAL_s</span>    <span class="o">=</span> <span class="mf">0.1</span>    <span class="c1"># throttle period for /eval_live  [s]</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_to_rad</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="n">unit</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">float</span><span class="p">:</span>
+    <span class="n">unit</span> <span class="o">=</span> <span class="n">unit</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
+    <span class="k">if</span> <span class="n">unit</span> <span class="o">==</span> <span class="s2">&quot;index&quot;</span><span class="p">:</span>
+        <span class="k">return</span> <span class="nb">float</span><span class="p">(</span><span class="n">value</span><span class="p">)</span> <span class="o">*</span> <span class="n">RAD_PER_INDEX</span>
+    <span class="k">if</span> <span class="n">unit</span> <span class="o">==</span> <span class="s2">&quot;degree&quot;</span><span class="p">:</span>
+        <span class="k">return</span> <span class="nb">float</span><span class="p">(</span><span class="n">value</span><span class="p">)</span> <span class="o">*</span> <span class="n">math</span><span class="o">.</span><span class="n">pi</span> <span class="o">/</span> <span class="mf">180.0</span>
+    <span class="k">return</span> <span class="nb">float</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>   <span class="c1"># assume already radians</span>
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">yaml</span></code> reads the criteria file and <code class="docutils literal notranslate"><span class="pre">json</span></code> parses the event payloads and packs the
+result messages. The constants are the fixed rules of the evaluation: the plate geometry
+(72 holes → 5° per index), the settling floor and window from the shared building block,
+and the 0.1 s live-publish throttle. <code class="docutils literal notranslate"><span class="pre">_to_rad</span></code> is the single place where payload units
+become radians — every algorithm below works in radians only.</p>
+<p><strong>Constructor.</strong></p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">class</span><span class="w"> </span><span class="nc">ExperimentEvaluator</span><span class="p">(</span><span class="n">Node</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="s2">&quot;experiment_evaluator&quot;</span><span class="p">)</span>
+
+        <span class="c1"># group_number: launch passes it via LaunchConfiguration; &quot;5&quot; is</span>
+        <span class="c1"># type-inferred to INT, while the default/standalone case is STR — dynamic_typing</span>
+        <span class="c1"># accepts either (the criteria loader normalizes with str()).</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">declare_parameter</span><span class="p">(</span>
+            <span class="s2">&quot;group_number&quot;</span><span class="p">,</span> <span class="s2">&quot;0&quot;</span><span class="p">,</span> <span class="n">ParameterDescriptor</span><span class="p">(</span><span class="n">dynamic_typing</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+        <span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">declare_parameter</span><span class="p">(</span><span class="s2">&quot;criteria_file_path&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">)</span>
+
+        <span class="n">group_number</span>  <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_parameter</span><span class="p">(</span><span class="s2">&quot;group_number&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">value</span>
+        <span class="n">criteria_file</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_parameter</span><span class="p">(</span><span class="s2">&quot;criteria_file_path&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">value</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">_criteria</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_load_criteria</span><span class="p">(</span><span class="n">criteria_file</span><span class="p">,</span> <span class="n">group_number</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">get_logger</span><span class="p">()</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;[ExperimentEvaluator] group_number=</span><span class="si">{</span><span class="n">group_number</span><span class="si">!r}</span><span class="s2">  criteria=</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">_criteria</span><span class="si">}</span><span class="s2">&quot;</span>
+        <span class="p">)</span>
+
+        <span class="n">reliable_qos</span> <span class="o">=</span> <span class="n">QoSProfile</span><span class="p">(</span>
+            <span class="n">reliability</span><span class="o">=</span><span class="n">ReliabilityPolicy</span><span class="o">.</span><span class="n">RELIABLE</span><span class="p">,</span>
+            <span class="n">history</span><span class="o">=</span><span class="n">HistoryPolicy</span><span class="o">.</span><span class="n">KEEP_LAST</span><span class="p">,</span>
+            <span class="n">depth</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span>
+        <span class="p">)</span>
+
+        <span class="c1"># Relative topic/service names so the node&#39;s namespace (/G&lt;N&gt;) is prepended.</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_event_sub</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">create_subscription</span><span class="p">(</span>
+            <span class="n">EventTrigger</span><span class="p">,</span> <span class="s2">&quot;event_trigger&quot;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_event_trigger_cb</span><span class="p">,</span> <span class="n">reliable_qos</span>
+        <span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_states_sub</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">create_subscription</span><span class="p">(</span>
+            <span class="n">EncoderState</span><span class="p">,</span> <span class="s2">&quot;estimated_states&quot;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_estimated_states_cb</span><span class="p">,</span> <span class="n">reliable_qos</span>
+        <span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">_live_pub</span>    <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">create_publisher</span><span class="p">(</span><span class="n">ExperimentEval</span><span class="p">,</span> <span class="s2">&quot;eval_live&quot;</span><span class="p">,</span>    <span class="n">reliable_qos</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_summary_pub</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">create_publisher</span><span class="p">(</span><span class="n">ExperimentEval</span><span class="p">,</span> <span class="s2">&quot;eval_summary&quot;</span><span class="p">,</span> <span class="n">reliable_qos</span><span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">_update_criteria_srv</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">create_service</span><span class="p">(</span>
+            <span class="n">UpdateCriteria</span><span class="p">,</span> <span class="s2">&quot;update_criteria&quot;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_update_criteria_cb</span>
+        <span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">_reset_state</span><span class="p">()</span>
+</pre></div>
+</div>
+<p>The interesting parameter detail is <code class="docutils literal notranslate"><span class="pre">dynamic_typing=True</span></code>: a ROS parameter normally has
+one fixed type, but <code class="docutils literal notranslate"><span class="pre">group_number</span></code> can arrive as an <strong>int</strong> (the launch file passes
+<code class="docutils literal notranslate"><span class="pre">5</span></code>) or as a <strong>string</strong> (the standalone default <code class="docutils literal notranslate"><span class="pre">&quot;0&quot;</span></code>). Dynamic typing accepts both,
+and the criteria loader normalizes with <code class="docutils literal notranslate"><span class="pre">str()</span></code>. The rest is the usual wiring — two
+subscriptions, two publishers, and the service server — and one call to
+<code class="docutils literal notranslate"><span class="pre">_reset_state()</span></code> so all experiment variables exist before the first event.</p>
+<p><strong>Loading the criteria —</strong> <code class="docutils literal notranslate"><span class="pre">_load_criteria</span></code>.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">def</span><span class="w"> </span><span class="nf">_load_criteria</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">path</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">group_number</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+    <span class="n">default</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;min_speed&quot;</span><span class="p">:</span>           <span class="mf">0.5</span><span class="p">,</span>
+        <span class="s2">&quot;min_acceleration&quot;</span><span class="p">:</span>    <span class="mf">1.0</span><span class="p">,</span>
+        <span class="s2">&quot;max_avg_error_rad&quot;</span><span class="p">:</span>   <span class="mf">0.1</span><span class="p">,</span>
+        <span class="s2">&quot;max_overshoot_pct&quot;</span><span class="p">:</span>   <span class="mf">20.0</span><span class="p">,</span>
+        <span class="s2">&quot;max_settling_time_s&quot;</span><span class="p">:</span> <span class="mf">5.0</span><span class="p">,</span>
+        <span class="s2">&quot;settling_band_pct&quot;</span><span class="p">:</span>   <span class="mf">3.0</span><span class="p">,</span>
+    <span class="p">}</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">path</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">isfile</span><span class="p">(</span><span class="n">path</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">get_logger</span><span class="p">()</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;criteria_file_path not found (</span><span class="si">{</span><span class="n">path</span><span class="si">!r}</span><span class="s2">); using defaults&quot;</span>
+        <span class="p">)</span>
+        <span class="k">return</span> <span class="n">default</span>
+    <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="s2">&quot;r&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+        <span class="n">data</span> <span class="o">=</span> <span class="n">yaml</span><span class="o">.</span><span class="n">safe_load</span><span class="p">(</span><span class="n">f</span><span class="p">)</span>
+    <span class="c1"># Normalize keys to strings: YAML parses bare `11:` as an int, but group_number</span>
+    <span class="c1"># arrives from the ROS param. group_number 0 / unlisted → &#39;default&#39;.</span>
+    <span class="n">table</span> <span class="o">=</span> <span class="p">{</span><span class="nb">str</span><span class="p">(</span><span class="n">k</span><span class="p">):</span> <span class="n">v</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">data</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;criteria&quot;</span><span class="p">,</span> <span class="p">{})</span><span class="o">.</span><span class="n">items</span><span class="p">()}</span>
+    <span class="n">key</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">group_number</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">key</span> <span class="ow">in</span> <span class="n">table</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">table</span><span class="p">[</span><span class="n">key</span><span class="p">]</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">get_logger</span><span class="p">()</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span>
+        <span class="sa">f</span><span class="s2">&quot;group_number </span><span class="si">{</span><span class="n">group_number</span><span class="si">!r}</span><span class="s2"> not in criteria table; using &#39;default&#39;&quot;</span>
+    <span class="p">)</span>
+    <span class="k">return</span> <span class="n">table</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;default&quot;</span><span class="p">,</span> <span class="n">default</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>Three layers of fallback, so the node always has usable limits: the group’s own row → the
+file’s <code class="docutils literal notranslate"><span class="pre">default</span></code> row → the hardcoded <code class="docutils literal notranslate"><span class="pre">default</span></code> dict (when the file is missing). The
+key normalization comment explains a real YAML trap: a bare <code class="docutils literal notranslate"><span class="pre">11:</span></code> in YAML is parsed as
+an <em>integer</em> key, but the ROS parameter may deliver the string <code class="docutils literal notranslate"><span class="pre">&quot;11&quot;</span></code> — converting both
+sides with <code class="docutils literal notranslate"><span class="pre">str()</span></code> makes them match.</p>
+<p><strong>Changing the criteria live —</strong> <code class="docutils literal notranslate"><span class="pre">_update_criteria_cb</span></code>.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">def</span><span class="w"> </span><span class="nf">_update_criteria_cb</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">request</span><span class="p">,</span> <span class="n">response</span><span class="p">):</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">updates</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">request</span><span class="o">.</span><span class="n">criteria_json</span><span class="p">)</span>
+    <span class="k">except</span> <span class="n">json</span><span class="o">.</span><span class="n">JSONDecodeError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+        <span class="n">response</span><span class="o">.</span><span class="n">success</span> <span class="o">=</span> <span class="kc">False</span>
+        <span class="n">response</span><span class="o">.</span><span class="n">message</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;Invalid JSON: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span>
+        <span class="k">return</span> <span class="n">response</span>
+
+    <span class="n">valid_criteria</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">val</span> <span class="ow">in</span> <span class="n">updates</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+        <span class="k">if</span> <span class="n">key</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_criteria</span><span class="p">:</span>
+            <span class="n">response</span><span class="o">.</span><span class="n">success</span> <span class="o">=</span> <span class="kc">False</span>
+            <span class="n">response</span><span class="o">.</span><span class="n">message</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;Unknown Key: </span><span class="si">{</span><span class="n">key</span><span class="si">}</span><span class="s2">&quot;</span>
+            <span class="k">return</span> <span class="n">response</span>
+
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">val</span><span class="p">,</span> <span class="p">(</span><span class="nb">int</span><span class="p">,</span> <span class="nb">float</span><span class="p">))</span> <span class="ow">or</span> <span class="n">val</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="n">response</span><span class="o">.</span><span class="n">success</span> <span class="o">=</span> <span class="kc">False</span>
+            <span class="n">response</span><span class="o">.</span><span class="n">message</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;Invalid value for </span><span class="si">{</span><span class="n">key</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">val</span><span class="si">}</span><span class="s2">&quot;</span>
+            <span class="k">return</span> <span class="n">response</span>
+
+        <span class="n">valid_criteria</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">val</span><span class="p">)</span>
+
+    <span class="bp">self</span><span class="o">.</span><span class="n">_criteria</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">valid_criteria</span><span class="p">)</span>
+    <span class="n">updated_keys</span> <span class="o">=</span> <span class="s2">&quot;, &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">valid_criteria</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span>
+    <span class="n">updated_values</span> <span class="o">=</span> <span class="s2">&quot;, &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">v</span><span class="p">)</span> <span class="k">for</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">valid_criteria</span><span class="o">.</span><span class="n">values</span><span class="p">())</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">get_logger</span><span class="p">()</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;[criteria] Updated: </span><span class="si">{</span><span class="n">updated_keys</span><span class="si">}</span><span class="s2"> with value: </span><span class="si">{</span><span class="n">updated_values</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="n">response</span><span class="o">.</span><span class="n">success</span> <span class="o">=</span> <span class="kc">True</span>
+    <span class="n">response</span><span class="o">.</span><span class="n">message</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;Updated: </span><span class="si">{</span><span class="n">updated_keys</span><span class="si">}</span><span class="s2"> with value: </span><span class="si">{</span><span class="n">updated_values</span><span class="si">}</span><span class="s2">&quot;</span>
+    <span class="n">response</span><span class="o">.</span><span class="n">current_criteria_json</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_criteria</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">response</span>
+</pre></div>
+</div>
+<p>This is the server side of the service the web visualizer calls. The validation is
+<strong>all-or-nothing</strong>: every key must already exist in the criteria and every value must be
+a non-negative number; the checked values are collected into <code class="docutils literal notranslate"><span class="pre">valid_criteria</span></code> first and
+applied only after <em>everything</em> passed. One bad entry rejects the whole request, so the
+criteria can never end up half-updated. The response always carries the full current
+criteria as JSON — that is what the browser’s Criteria tab displays. A request with an
+empty <code class="docutils literal notranslate"><span class="pre">{}</span></code> changes nothing and just returns the current criteria (the web visualizer
+uses exactly this trick for its snapshot).</p>
+<p><strong>Fresh state for every run —</strong> <code class="docutils literal notranslate"><span class="pre">_reset_state</span></code>.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">def</span><span class="w"> </span><span class="nf">_reset_state</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+    <span class="c1"># core</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">_active_action</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span>       <span class="o">=</span> <span class="kc">None</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">_payload</span><span class="p">:</span> <span class="nb">dict</span>                   <span class="o">=</span> <span class="p">{}</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">_start_pos_rad</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span>     <span class="o">=</span> <span class="kc">None</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">_start_time_s</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span>      <span class="o">=</span> <span class="kc">None</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">_last_live_time_s</span><span class="p">:</span> <span class="nb">float</span>         <span class="o">=</span> <span class="mf">0.0</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">_last_pos_rad</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span>      <span class="o">=</span> <span class="kc">None</span>  <span class="c1"># latest /estimated_states position</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">_samples</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">tuple</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="nb">float</span><span class="p">,</span> <span class="nb">float</span><span class="p">]]</span> <span class="o">=</span> <span class="p">[]</span>  <span class="c1"># (pos_rad, vel_rad_s, accel_rad_s2)</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">_t_start</span><span class="p">:</span> <span class="nb">float</span>                  <span class="o">=</span> <span class="mf">0.0</span>
+
+    <span class="c1"># ptp settling</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">_settling_time_s</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span>   <span class="o">=</span> <span class="kc">None</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">_first_band_entry_s</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">_cont_band_entry_s</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span>  <span class="o">=</span> <span class="kc">None</span>
+
+    <span class="c1"># pick_place</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">_wp_idx</span><span class="p">:</span> <span class="nb">int</span>                          <span class="o">=</span> <span class="mi">0</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">_wp_results</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">]</span>               <span class="o">=</span> <span class="p">[]</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">_wp_first_band_entry_s</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span>  <span class="o">=</span> <span class="kc">None</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">_wp_cont_band_entry_s</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span>   <span class="o">=</span> <span class="kc">None</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">_wp_reached_target</span><span class="p">:</span> <span class="nb">bool</span>              <span class="o">=</span> <span class="kc">False</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">_wp_peak_pos_rad</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span>        <span class="o">=</span> <span class="kc">None</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">_wp_prev_target_rad</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span>     <span class="o">=</span> <span class="kc">None</span>
+
+    <span class="c1"># precision</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">_trial_positions_rad</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span>     <span class="o">=</span> <span class="p">[]</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">_prec_est_terminating_t_s</span><span class="p">:</span> <span class="nb">float</span>      <span class="o">=</span> <span class="kc">None</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">_buffer_reach_t_s</span><span class="p">:</span> <span class="nb">float</span>              <span class="o">=</span> <span class="mf">1.0</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">_prec_at_target</span><span class="p">:</span> <span class="nb">bool</span>                 <span class="o">=</span> <span class="kc">False</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">_prec_cont_band_entry_s</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">_prec_skipped</span><span class="p">:</span> <span class="nb">int</span>                    <span class="o">=</span> <span class="mi">0</span>
+    <span class="c1">#start time of the return-to-init phase, used for its own force-skip timeout</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">_prec_return_t_start_s</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span>  <span class="o">=</span> <span class="kc">None</span>
+    <span class="c1">#return-to-init (group 2) settled positions, its skip count, and half-band cross timestamp</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">_return_positions_rad</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span>    <span class="o">=</span> <span class="p">[]</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">_prec_return_skipped</span><span class="p">:</span> <span class="nb">int</span>             <span class="o">=</span> <span class="mi">0</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">_prec_return_est_t_s</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span>    <span class="o">=</span> <span class="kc">None</span>
+
+    <span class="c1"># performance</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">_peak_speed_rad_s</span><span class="p">:</span> <span class="nb">float</span>  <span class="o">=</span> <span class="mf">0.0</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">_peak_accel_rad_s2</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.0</span>
+</pre></div>
+</div>
+<p>This is the node’s memory for one experiment, grouped by aspect — you can read the four
+algorithms’ needs straight from it: point-to-point needs the two band-entry timestamps,
+pick-place needs a waypoint cursor and per-waypoint results, precision needs both phase
+groups with their skip counters and timeout stamps, performance needs only the two peaks.
+<code class="docutils literal notranslate"><span class="pre">_start_experiment</span></code> calls this first, so <strong>no value from the previous run can leak into
+the next one</strong> — that is why a fresh reset per run matters.</p>
+<p><strong>The router —</strong> <code class="docutils literal notranslate"><span class="pre">_event_trigger_cb</span></code>.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">def</span><span class="w"> </span><span class="nf">_event_trigger_cb</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">msg</span><span class="p">:</span> <span class="n">EventTrigger</span><span class="p">):</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">payload</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">msg</span><span class="o">.</span><span class="n">event</span><span class="p">)</span>
+    <span class="k">except</span> <span class="p">(</span><span class="ne">TypeError</span><span class="p">,</span> <span class="ne">ValueError</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">get_logger</span><span class="p">()</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;[EventTrigger] invalid JSON: </span><span class="si">{</span><span class="n">msg</span><span class="o">.</span><span class="n">event</span><span class="si">!r}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="k">return</span>
+
+    <span class="n">action</span> <span class="o">=</span> <span class="n">payload</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;action&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">)</span>
+    <span class="n">mode</span>   <span class="o">=</span> <span class="n">payload</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;mode&quot;</span><span class="p">,</span>   <span class="s2">&quot;&quot;</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">mode</span> <span class="o">==</span> <span class="s2">&quot;STOP&quot;</span> <span class="ow">or</span> <span class="n">action</span> <span class="o">==</span> <span class="s2">&quot;stop&quot;</span><span class="p">:</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_active_action</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">get_logger</span><span class="p">()</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;[Evaluator] STOP received — finishing experiment&quot;</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_finish_experiment</span><span class="p">()</span>
+        <span class="k">return</span>
+
+    <span class="k">if</span> <span class="n">action</span> <span class="o">==</span> <span class="s2">&quot;skip_iteration&quot;</span><span class="p">:</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_active_action</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_skip_iteration</span><span class="p">()</span>
+        <span class="k">return</span>
+
+    <span class="k">if</span> <span class="n">action</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">&quot;point_to_point&quot;</span><span class="p">,</span> <span class="s2">&quot;pick_place&quot;</span><span class="p">,</span> <span class="s2">&quot;performance&quot;</span><span class="p">,</span> <span class="s2">&quot;precision&quot;</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_start_experiment</span><span class="p">(</span><span class="n">action</span><span class="p">,</span> <span class="n">payload</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">get_logger</span><span class="p">()</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;[Evaluator] unknown action </span><span class="si">{</span><span class="n">action</span><span class="si">!r}</span><span class="s2">, ignoring&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>Every event goes through this one router. The order matters: STOP and skip are checked
+first and only act when a run is active; a recognized test aspect starts a new run
+(starting while another run is active simply replaces it — <code class="docutils literal notranslate"><span class="pre">_start_experiment</span></code> resets
+everything); anything unknown is logged and ignored, so a typo in an event can never
+crash the judge.</p>
+<p><strong>The lifecycle pair —</strong> <code class="docutils literal notranslate"><span class="pre">_start_experiment</span></code> <strong>and</strong> <code class="docutils literal notranslate"><span class="pre">_finish_experiment</span></code>.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">def</span><span class="w"> </span><span class="nf">_start_experiment</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">action</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">payload</span><span class="p">:</span> <span class="nb">dict</span><span class="p">):</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">_reset_state</span><span class="p">()</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">_active_action</span> <span class="o">=</span> <span class="n">action</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">_payload</span>       <span class="o">=</span> <span class="n">payload</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">_t_start</span>       <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_clock</span><span class="p">()</span><span class="o">.</span><span class="n">now</span><span class="p">()</span><span class="o">.</span><span class="n">nanoseconds</span> <span class="o">*</span> <span class="mf">1e-9</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">get_logger</span><span class="p">()</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;[Evaluator] started experiment: </span><span class="si">{</span><span class="n">action</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_finish_experiment</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+    <span class="n">action</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_active_action</span>
+    <span class="k">if</span> <span class="n">action</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">return</span>
+    <span class="n">summary</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_compute_summary</span><span class="p">(</span><span class="n">action</span><span class="p">)</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">_active_action</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">msg</span> <span class="o">=</span> <span class="n">ExperimentEval</span><span class="p">()</span>
+    <span class="n">msg</span><span class="o">.</span><span class="n">header</span><span class="o">.</span><span class="n">stamp</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_clock</span><span class="p">()</span><span class="o">.</span><span class="n">now</span><span class="p">()</span><span class="o">.</span><span class="n">to_msg</span><span class="p">()</span>
+    <span class="n">msg</span><span class="o">.</span><span class="n">action</span>       <span class="o">=</span> <span class="n">action</span>
+    <span class="n">msg</span><span class="o">.</span><span class="n">data</span>         <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="n">summary</span><span class="p">)</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">_summary_pub</span><span class="o">.</span><span class="n">publish</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">get_logger</span><span class="p">()</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;[Evaluator] summary: </span><span class="si">{</span><span class="n">msg</span><span class="o">.</span><span class="n">data</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>Start = wipe the state, remember which aspect is active and its payload, stamp the start
+time. Finish = the mirror: note that the summary is computed <strong>before</strong>
+<code class="docutils literal notranslate"><span class="pre">_active_action</span></code> is cleared — the summary functions read the collected state, so the
+order matters. After the summary is published the node is idle again, back to waiting for
+the next event.</p>
+<p><strong>The measuring loop —</strong> <code class="docutils literal notranslate"><span class="pre">_estimated_states_cb</span></code>.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">def</span><span class="w"> </span><span class="nf">_estimated_states_cb</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">msg</span><span class="p">:</span> <span class="n">EncoderState</span><span class="p">):</span>
+    <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_active_action</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">return</span>
+
+    <span class="n">pos_rad</span>      <span class="o">=</span> <span class="n">msg</span><span class="o">.</span><span class="n">position</span>
+    <span class="n">vel_rad_s</span>    <span class="o">=</span> <span class="n">msg</span><span class="o">.</span><span class="n">velocity</span>
+    <span class="n">accel_rad_s2</span> <span class="o">=</span> <span class="n">msg</span><span class="o">.</span><span class="n">acceleration</span>
+    <span class="n">now_s</span>        <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_clock</span><span class="p">()</span><span class="o">.</span><span class="n">now</span><span class="p">()</span><span class="o">.</span><span class="n">nanoseconds</span> <span class="o">*</span> <span class="mf">1e-9</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">_last_pos_rad</span> <span class="o">=</span> <span class="n">pos_rad</span>
+
+    <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_start_pos_rad</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_start_pos_rad</span> <span class="o">=</span> <span class="n">pos_rad</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_start_time_s</span>  <span class="o">=</span> <span class="n">now_s</span>
+
+    <span class="n">elapsed_s</span> <span class="o">=</span> <span class="n">now_s</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">_start_time_s</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">_samples</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">pos_rad</span><span class="p">,</span> <span class="n">vel_rad_s</span><span class="p">,</span> <span class="n">accel_rad_s2</span><span class="p">))</span>
+
+    <span class="n">action</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_active_action</span>
+    <span class="k">if</span> <span class="n">action</span> <span class="o">==</span> <span class="s2">&quot;point_to_point&quot;</span><span class="p">:</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_update_ptp</span><span class="p">(</span><span class="n">pos_rad</span><span class="p">,</span> <span class="n">elapsed_s</span><span class="p">)</span>
+    <span class="k">elif</span> <span class="n">action</span> <span class="o">==</span> <span class="s2">&quot;pick_place&quot;</span><span class="p">:</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_update_pp</span><span class="p">(</span><span class="n">pos_rad</span><span class="p">,</span> <span class="n">now_s</span><span class="p">)</span>
+    <span class="k">elif</span> <span class="n">action</span> <span class="o">==</span> <span class="s2">&quot;performance&quot;</span><span class="p">:</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_update_perf</span><span class="p">(</span><span class="n">vel_rad_s</span><span class="p">,</span> <span class="n">accel_rad_s2</span><span class="p">)</span>
+    <span class="k">elif</span> <span class="n">action</span> <span class="o">==</span> <span class="s2">&quot;precision&quot;</span><span class="p">:</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_update_prec</span><span class="p">(</span><span class="n">pos_rad</span><span class="p">,</span> <span class="n">now_s</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_active_action</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">return</span>  <span class="c1"># experiment auto-finished during update</span>
+
+    <span class="c1"># throttled live publish</span>
+    <span class="k">if</span> <span class="n">now_s</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">_last_live_time_s</span> <span class="o">&gt;=</span> <span class="n">LIVE_PUB_INTERVAL_s</span><span class="p">:</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_last_live_time_s</span> <span class="o">=</span> <span class="n">now_s</span>
+        <span class="n">live</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_compute_live</span><span class="p">(</span><span class="n">action</span><span class="p">,</span> <span class="n">pos_rad</span><span class="p">,</span> <span class="n">vel_rad_s</span><span class="p">,</span> <span class="n">accel_rad_s2</span><span class="p">,</span> <span class="n">elapsed_s</span><span class="p">)</span>
+        <span class="n">m</span> <span class="o">=</span> <span class="n">ExperimentEval</span><span class="p">()</span>
+        <span class="n">m</span><span class="o">.</span><span class="n">header</span><span class="o">.</span><span class="n">stamp</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_clock</span><span class="p">()</span><span class="o">.</span><span class="n">now</span><span class="p">()</span><span class="o">.</span><span class="n">to_msg</span><span class="p">()</span>
+        <span class="n">m</span><span class="o">.</span><span class="n">action</span>       <span class="o">=</span> <span class="n">action</span>
+        <span class="n">m</span><span class="o">.</span><span class="n">data</span>         <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="n">live</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_live_pub</span><span class="o">.</span><span class="n">publish</span><span class="p">(</span><span class="n">m</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>The shared skeleton from the big-picture diagram. Two guards are worth a close look. The
+first line makes the node cheap when idle — samples arrive all the time, but without an
+active run they are dropped immediately. The second guard, <em>after</em> the dispatch, handles
+a subtle case: an update function may finish the experiment mid-callback (for example
+point-to-point settling on this very sample). <code class="docutils literal notranslate"><span class="pre">_finish_experiment</span></code> clears
+<code class="docutils literal notranslate"><span class="pre">_active_action</span></code>, so without this check the node would publish one more live message
+for a run that is already over. The live publish itself is throttled: it runs only when
+0.1 s has passed since the last one, turning the 500 Hz sample stream into a 10 Hz UI
+feed.</p>
+<p><strong>Point-to-point —</strong> <code class="docutils literal notranslate"><span class="pre">_update_ptp</span></code>.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">def</span><span class="w"> </span><span class="nf">_update_ptp</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">pos_rad</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span> <span class="n">elapsed_s</span><span class="p">:</span> <span class="nb">float</span><span class="p">):</span>
+    <span class="n">target_rad</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_start_pos_rad</span> <span class="o">+</span> <span class="n">_to_rad</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_payload</span><span class="p">[</span><span class="s2">&quot;value&quot;</span><span class="p">],</span> <span class="bp">self</span><span class="o">.</span><span class="n">_payload</span><span class="p">[</span><span class="s2">&quot;unit&quot;</span><span class="p">])</span>
+    <span class="n">travel_rad</span> <span class="o">=</span> <span class="n">target_rad</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">_start_pos_rad</span>
+    <span class="n">band_rad</span>   <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">SETTLING_THRESHOLD_rad</span><span class="p">,</span>
+                     <span class="bp">self</span><span class="o">.</span><span class="n">_criteria</span><span class="p">[</span><span class="s2">&quot;settling_band_pct&quot;</span><span class="p">]</span> <span class="o">/</span> <span class="mf">100.0</span> <span class="o">*</span> <span class="nb">abs</span><span class="p">(</span><span class="n">travel_rad</span><span class="p">))</span>
+    <span class="n">error_rad</span>  <span class="o">=</span> <span class="nb">abs</span><span class="p">(</span><span class="n">pos_rad</span> <span class="o">-</span> <span class="n">target_rad</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">error_rad</span> <span class="o">&lt;</span> <span class="n">band_rad</span><span class="p">:</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_first_band_entry_s</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_first_band_entry_s</span> <span class="o">=</span> <span class="n">elapsed_s</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_cont_band_entry_s</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_cont_band_entry_s</span> <span class="o">=</span> <span class="n">elapsed_s</span>
+        <span class="k">if</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_settling_time_s</span> <span class="ow">is</span> <span class="kc">None</span>
+                <span class="ow">and</span> <span class="n">elapsed_s</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">_cont_band_entry_s</span> <span class="o">&gt;=</span> <span class="n">SETTLING_WINDOW_s</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_settling_time_s</span> <span class="o">=</span> <span class="n">elapsed_s</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">_first_band_entry_s</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_finish_experiment</span><span class="p">()</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_cont_band_entry_s</span> <span class="o">=</span> <span class="kc">None</span>
+</pre></div>
+</div>
+<p>The settling rule from the shared building block, in code. The two timestamps do
+different jobs: <code class="docutils literal notranslate"><span class="pre">_first_band_entry_s</span></code> is set <strong>once</strong> (the settling clock) while
+<code class="docutils literal notranslate"><span class="pre">_cont_band_entry_s</span></code> is reset every time the robot leaves the band (the 0.5 s
+continuity counter). When the continuous stay reaches the window, the settling time is
+computed from the <em>first</em> entry — bounce-outs are included — and the run auto-finishes.</p>
+<p><strong>Pick-and-place —</strong> <code class="docutils literal notranslate"><span class="pre">_update_pp</span></code> <strong>and</strong> <code class="docutils literal notranslate"><span class="pre">_settle_waypoint</span></code>.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">def</span><span class="w"> </span><span class="nf">_update_pp</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">pos_rad</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span> <span class="n">now_s</span><span class="p">:</span> <span class="nb">float</span><span class="p">):</span>
+    <span class="n">payload</span>    <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_payload</span>
+    <span class="n">sequence</span>   <span class="o">=</span> <span class="n">payload</span><span class="p">[</span><span class="s2">&quot;order_sequence&quot;</span><span class="p">]</span>
+    <span class="n">target_rad</span> <span class="o">=</span> <span class="n">sequence</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_wp_idx</span><span class="p">]</span> <span class="o">*</span> <span class="n">RAD_PER_INDEX</span>
+
+    <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_wp_prev_target_rad</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_wp_prev_target_rad</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_start_pos_rad</span>
+
+    <span class="n">travel_rad</span> <span class="o">=</span> <span class="n">target_rad</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">_wp_prev_target_rad</span>
+    <span class="n">band_rad</span>   <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">SETTLING_THRESHOLD_rad</span><span class="p">,</span>
+                     <span class="bp">self</span><span class="o">.</span><span class="n">_criteria</span><span class="p">[</span><span class="s2">&quot;settling_band_pct&quot;</span><span class="p">]</span> <span class="o">/</span> <span class="mf">100.0</span> <span class="o">*</span> <span class="nb">abs</span><span class="p">(</span><span class="n">travel_rad</span><span class="p">))</span>
+    <span class="n">error_rad</span>  <span class="o">=</span> <span class="nb">abs</span><span class="p">(</span><span class="n">pos_rad</span> <span class="o">-</span> <span class="n">target_rad</span><span class="p">)</span>
+
+    <span class="c1"># First time entering the settling band → start approach tracking</span>
+    <span class="k">if</span> <span class="n">error_rad</span> <span class="o">&lt;</span> <span class="n">band_rad</span> <span class="ow">and</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">_wp_reached_target</span><span class="p">:</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_wp_reached_target</span>     <span class="o">=</span> <span class="kc">True</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_wp_peak_pos_rad</span>       <span class="o">=</span> <span class="n">pos_rad</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_wp_first_band_entry_s</span> <span class="o">=</span> <span class="n">now_s</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_wp_cont_band_entry_s</span>  <span class="o">=</span> <span class="n">now_s</span>
+
+    <span class="c1"># Peak tracking and settling (only after robot first reaches target)</span>
+    <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_wp_reached_target</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">travel_rad</span> <span class="o">&gt;=</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_wp_peak_pos_rad</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_wp_peak_pos_rad</span><span class="p">,</span> <span class="n">pos_rad</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_wp_peak_pos_rad</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_wp_peak_pos_rad</span><span class="p">,</span> <span class="n">pos_rad</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">error_rad</span> <span class="o">&lt;</span> <span class="n">band_rad</span><span class="p">:</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_wp_cont_band_entry_s</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_wp_cont_band_entry_s</span> <span class="o">=</span> <span class="n">now_s</span>
+            <span class="k">if</span> <span class="n">now_s</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">_wp_cont_band_entry_s</span> <span class="o">&gt;=</span> <span class="n">SETTLING_WINDOW_s</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_settle_waypoint</span><span class="p">(</span><span class="n">target_rad</span><span class="p">,</span> <span class="n">travel_rad</span><span class="p">,</span> <span class="n">error_rad</span><span class="p">,</span> <span class="n">now_s</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_wp_cont_band_entry_s</span> <span class="o">=</span> <span class="kc">None</span>
+</pre></div>
+</div>
+<p>The same settling machinery as point-to-point, plus two waypoint-specific pieces: the
+travel baseline is the <strong>previous target</strong> (<code class="docutils literal notranslate"><span class="pre">_wp_prev_target_rad</span></code>), and the <strong>peak
+tracking</strong> starts at the first band entry. The peak is direction-aware — <code class="docutils literal notranslate"><span class="pre">max</span></code> for a
+forward move, <code class="docutils literal notranslate"><span class="pre">min</span></code> for a backward one — so the overshoot is always measured <em>past</em> the
+target regardless of direction.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">def</span><span class="w"> </span><span class="nf">_settle_waypoint</span><span class="p">(</span>
+    <span class="bp">self</span><span class="p">,</span> <span class="n">target_rad</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span> <span class="n">travel_rad</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span> <span class="n">final_error_rad</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span> <span class="n">now_s</span><span class="p">:</span> <span class="nb">float</span>
+<span class="p">):</span>
+    <span class="n">wp_settling_time_s</span> <span class="o">=</span> <span class="n">now_s</span> <span class="o">-</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_wp_first_band_entry_s</span> <span class="ow">or</span> <span class="n">now_s</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_wp_peak_pos_rad</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="nb">abs</span><span class="p">(</span><span class="n">travel_rad</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mf">1e-9</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">travel_rad</span> <span class="o">&gt;=</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="n">overshoot_rad</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="mf">0.0</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_wp_peak_pos_rad</span> <span class="o">-</span> <span class="n">target_rad</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">overshoot_rad</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="mf">0.0</span><span class="p">,</span> <span class="n">target_rad</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">_wp_peak_pos_rad</span><span class="p">)</span>
+        <span class="n">overshoot_pct</span> <span class="o">=</span> <span class="n">overshoot_rad</span> <span class="o">/</span> <span class="nb">abs</span><span class="p">(</span><span class="n">travel_rad</span><span class="p">)</span> <span class="o">*</span> <span class="mf">100.0</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">overshoot_pct</span> <span class="o">=</span> <span class="mf">0.0</span>
+
+    <span class="n">c</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_criteria</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">_wp_results</span><span class="o">.</span><span class="n">append</span><span class="p">({</span>
+        <span class="s2">&quot;waypoint&quot;</span><span class="p">:</span>          <span class="bp">self</span><span class="o">.</span><span class="n">_wp_idx</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span>
+        <span class="s2">&quot;target_rad&quot;</span><span class="p">:</span>        <span class="nb">round</span><span class="p">(</span><span class="n">target_rad</span><span class="p">,</span> <span class="mi">5</span><span class="p">),</span>
+        <span class="s2">&quot;final_error_rad&quot;</span><span class="p">:</span>   <span class="nb">round</span><span class="p">(</span><span class="n">final_error_rad</span><span class="p">,</span> <span class="mi">5</span><span class="p">),</span>
+        <span class="s2">&quot;overshoot_pct&quot;</span><span class="p">:</span>     <span class="nb">round</span><span class="p">(</span><span class="n">overshoot_pct</span><span class="p">,</span> <span class="mi">3</span><span class="p">),</span>
+        <span class="s2">&quot;settling_time_s&quot;</span><span class="p">:</span>   <span class="nb">round</span><span class="p">(</span><span class="n">wp_settling_time_s</span><span class="p">,</span> <span class="mi">4</span><span class="p">),</span>
+        <span class="s2">&quot;pass_error&quot;</span><span class="p">:</span>        <span class="n">final_error_rad</span>    <span class="o">&lt;=</span> <span class="n">c</span><span class="p">[</span><span class="s2">&quot;max_avg_error_rad&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;pass_overshoot&quot;</span><span class="p">:</span>    <span class="n">overshoot_pct</span>      <span class="o">&lt;=</span> <span class="n">c</span><span class="p">[</span><span class="s2">&quot;max_overshoot_pct&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;pass_settling&quot;</span><span class="p">:</span>     <span class="n">wp_settling_time_s</span> <span class="o">&lt;=</span> <span class="n">c</span><span class="p">[</span><span class="s2">&quot;max_settling_time_s&quot;</span><span class="p">],</span>
+    <span class="p">})</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">get_logger</span><span class="p">()</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+        <span class="sa">f</span><span class="s2">&quot;[Evaluator] pick_place waypoint </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">_wp_idx</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mi">1</span><span class="si">}</span><span class="s2"> settled&quot;</span>
+    <span class="p">)</span>
+
+    <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_wp_idx</span> <span class="o">==</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_payload</span><span class="p">[</span><span class="s2">&quot;order_sequence&quot;</span><span class="p">])</span> <span class="o">-</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_finish_experiment</span><span class="p">()</span>
+        <span class="k">return</span>
+
+    <span class="c1"># Advance to next waypoint and reset per-waypoint state</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">_wp_prev_target_rad</span>    <span class="o">=</span> <span class="n">target_rad</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">_wp_idx</span>               <span class="o">+=</span> <span class="mi">1</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">_wp_first_band_entry_s</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">_wp_cont_band_entry_s</span>  <span class="o">=</span> <span class="kc">None</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">_wp_reached_target</span>     <span class="o">=</span> <span class="kc">False</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">_wp_peak_pos_rad</span>       <span class="o">=</span> <span class="kc">None</span>
+</pre></div>
+</div>
+<p>One settled waypoint becomes one result dictionary with its three pass flags — the
+browser’s details table is exactly this list. After the last waypoint the run
+auto-finishes; otherwise the baseline moves to the settled target and all per-waypoint
+tracking is reset for the next one.</p>
+<p><strong>Manual skip —</strong> <code class="docutils literal notranslate"><span class="pre">_skip_iteration</span></code> <strong>and</strong> <code class="docutils literal notranslate"><span class="pre">_skip_waypoint</span></code>.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">def</span><span class="w"> </span><span class="nf">_skip_iteration</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Manually skip the current iteration and advance to the next one.</span>
+
+<span class="sd">    Only pick_place and precision have multiple iterations; other actions are</span>
+<span class="sd">    single-shot, so skipping is a no-op there.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_active_action</span> <span class="o">==</span> <span class="s2">&quot;pick_place&quot;</span><span class="p">:</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_skip_waypoint</span><span class="p">()</span>
+    <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">_active_action</span> <span class="o">==</span> <span class="s2">&quot;precision&quot;</span><span class="p">:</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_skip_trial</span><span class="p">()</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">get_logger</span><span class="p">()</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;[Evaluator] skip_iteration ignored for action </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">_active_action</span><span class="si">!r}</span><span class="s2">&quot;</span>
+        <span class="p">)</span>
+</pre></div>
+</div>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">def</span><span class="w"> </span><span class="nf">_skip_waypoint</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Drop the current (unsettled) waypoint and advance to the next one. ...&quot;&quot;&quot;</span>
+    <span class="n">sequence</span>   <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_payload</span><span class="p">[</span><span class="s2">&quot;order_sequence&quot;</span><span class="p">]</span>
+    <span class="n">target_rad</span> <span class="o">=</span> <span class="n">sequence</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_wp_idx</span><span class="p">]</span> <span class="o">*</span> <span class="n">RAD_PER_INDEX</span>
+    <span class="n">cur_pos</span>    <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_last_pos_rad</span>
+    <span class="k">if</span> <span class="n">cur_pos</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">cur_pos</span> <span class="o">=</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_wp_prev_target_rad</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_wp_prev_target_rad</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
+                   <span class="k">else</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_start_pos_rad</span> <span class="ow">or</span> <span class="mf">0.0</span><span class="p">))</span>
+
+    <span class="bp">self</span><span class="o">.</span><span class="n">_wp_results</span><span class="o">.</span><span class="n">append</span><span class="p">({</span>
+        <span class="s2">&quot;waypoint&quot;</span><span class="p">:</span>        <span class="bp">self</span><span class="o">.</span><span class="n">_wp_idx</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span>
+        <span class="s2">&quot;target_rad&quot;</span><span class="p">:</span>      <span class="nb">round</span><span class="p">(</span><span class="n">target_rad</span><span class="p">,</span> <span class="mi">5</span><span class="p">),</span>
+        <span class="s2">&quot;final_error_rad&quot;</span><span class="p">:</span> <span class="nb">round</span><span class="p">(</span><span class="nb">abs</span><span class="p">(</span><span class="n">cur_pos</span> <span class="o">-</span> <span class="n">target_rad</span><span class="p">),</span> <span class="mi">5</span><span class="p">),</span>
+        <span class="s2">&quot;overshoot_pct&quot;</span><span class="p">:</span>   <span class="mf">0.0</span><span class="p">,</span>
+        <span class="s2">&quot;settling_time_s&quot;</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="s2">&quot;skipped&quot;</span><span class="p">:</span>         <span class="kc">True</span><span class="p">,</span>
+        <span class="s2">&quot;pass_error&quot;</span><span class="p">:</span>      <span class="kc">False</span><span class="p">,</span>
+        <span class="s2">&quot;pass_overshoot&quot;</span><span class="p">:</span>  <span class="kc">False</span><span class="p">,</span>
+        <span class="s2">&quot;pass_settling&quot;</span><span class="p">:</span>   <span class="kc">False</span><span class="p">,</span>
+    <span class="p">})</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">get_logger</span><span class="p">()</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+        <span class="sa">f</span><span class="s2">&quot;[Evaluator] pick_place waypoint </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">_wp_idx</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mi">1</span><span class="si">}</span><span class="s2"> SKIPPED&quot;</span>
+    <span class="p">)</span>
+
+    <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_wp_idx</span> <span class="o">==</span> <span class="nb">len</span><span class="p">(</span><span class="n">sequence</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_finish_experiment</span><span class="p">()</span>
+        <span class="k">return</span>
+
+    <span class="c1"># Advance; baseline = actual current position (NOT the unreached target).</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">_wp_prev_target_rad</span>    <span class="o">=</span> <span class="n">cur_pos</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">_wp_idx</span>               <span class="o">+=</span> <span class="mi">1</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">_wp_first_band_entry_s</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">_wp_cont_band_entry_s</span>  <span class="o">=</span> <span class="kc">None</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">_wp_reached_target</span>     <span class="o">=</span> <span class="kc">False</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">_wp_peak_pos_rad</span>       <span class="o">=</span> <span class="kc">None</span>
+</pre></div>
+</div>
+<p>A skipped waypoint is not silently dropped — it is recorded as a failed result marked
+<code class="docutils literal notranslate"><span class="pre">&quot;skipped&quot;:</span> <span class="pre">True</span></code> so the details table shows what happened, but the summary excludes it
+from the average error (a stuck waypoint should not poison the score of the others). The
+last comment carries the key idea: the next waypoint’s baseline is the robot’s <strong>actual</strong>
+position, because the robot never reached the target it just skipped.</p>
+<p><strong>Performance —</strong> <code class="docutils literal notranslate"><span class="pre">_update_perf</span></code>.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">def</span><span class="w"> </span><span class="nf">_update_perf</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">vel_rad_s</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span> <span class="n">accel_rad_s2</span><span class="p">:</span> <span class="nb">float</span><span class="p">):</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">_peak_speed_rad_s</span>  <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_peak_speed_rad_s</span><span class="p">,</span>  <span class="nb">abs</span><span class="p">(</span><span class="n">vel_rad_s</span><span class="p">))</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">_peak_accel_rad_s2</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_peak_accel_rad_s2</span><span class="p">,</span> <span class="nb">abs</span><span class="p">(</span><span class="n">accel_rad_s2</span><span class="p">))</span>
+</pre></div>
+</div>
+<p>Two lines — the whole algorithm. A running maximum of the absolute speed and
+acceleration. Everything else about this aspect (the STOP-only finish, the commanded
+values, the ≥ comparison) lives in the summary function below.</p>
+<p><strong>Precision —</strong> <code class="docutils literal notranslate"><span class="pre">_update_prec</span></code>, phase 1 (approach).</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">def</span><span class="w"> </span><span class="nf">_update_prec</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">pos_rad</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span> <span class="n">now_s</span><span class="p">:</span> <span class="nb">float</span><span class="p">):</span>
+    <span class="n">payload</span>  <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_payload</span>
+    <span class="n">tar_rad</span>  <span class="o">=</span> <span class="n">_to_rad</span><span class="p">(</span><span class="n">payload</span><span class="p">[</span><span class="s2">&quot;target_pos&quot;</span><span class="p">],</span>  <span class="n">payload</span><span class="p">[</span><span class="s2">&quot;unit&quot;</span><span class="p">])</span>
+    <span class="n">init_rad</span> <span class="o">=</span> <span class="n">_to_rad</span><span class="p">(</span><span class="n">payload</span><span class="p">[</span><span class="s2">&quot;init_pos&quot;</span><span class="p">],</span> <span class="n">payload</span><span class="p">[</span><span class="s2">&quot;unit&quot;</span><span class="p">])</span>
+    <span class="n">travel_rad</span> <span class="o">=</span> <span class="nb">abs</span><span class="p">(</span><span class="n">tar_rad</span> <span class="o">-</span> <span class="n">init_rad</span><span class="p">)</span>
+    <span class="n">band_rad</span>   <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">SETTLING_THRESHOLD_rad</span><span class="p">,</span>
+                     <span class="bp">self</span><span class="o">.</span><span class="n">_criteria</span><span class="p">[</span><span class="s2">&quot;settling_band_pct&quot;</span><span class="p">]</span> <span class="o">/</span> <span class="mf">100.0</span> <span class="o">*</span> <span class="n">travel_rad</span><span class="p">)</span>
+    <span class="n">counting_band_rad</span> <span class="o">=</span> <span class="mf">50.0</span><span class="o">/</span><span class="mf">100.0</span> <span class="o">*</span> <span class="n">travel_rad</span>
+
+    <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">_prec_at_target</span><span class="p">:</span>
+        <span class="c1"># ── init→target approach (group 1) ── waiting to settle at target position</span>
+        <span class="k">if</span> <span class="nb">abs</span><span class="p">(</span><span class="n">pos_rad</span> <span class="o">-</span> <span class="n">tar_rad</span><span class="p">)</span> <span class="o">&lt;</span> <span class="n">band_rad</span><span class="p">:</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_prec_cont_band_entry_s</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_prec_cont_band_entry_s</span> <span class="o">=</span> <span class="n">now_s</span>
+            <span class="k">if</span> <span class="n">now_s</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">_prec_cont_band_entry_s</span> <span class="o">&gt;=</span> <span class="n">SETTLING_WINDOW_s</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_trial_positions_rad</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">pos_rad</span><span class="p">)</span>
+                <span class="c1">#flip into the return phase; termination no longer happens here so the</span>
+                <span class="c1">#final trial also drives back to init before the run finishes</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_prec_at_target</span>           <span class="o">=</span> <span class="kc">True</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_prec_cont_band_entry_s</span>   <span class="o">=</span> <span class="kc">None</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_prec_est_terminating_t_s</span> <span class="o">=</span> <span class="kc">None</span>
+                <span class="c1">#fresh timers for the upcoming return phase (lazily re-stamped below)</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_prec_return_t_start_s</span>    <span class="o">=</span> <span class="kc">None</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_prec_return_est_t_s</span>      <span class="o">=</span> <span class="kc">None</span>
+
+        <span class="c1">#if the robot pass the trial counting_band and still not reach the target fall in this case</span>
+        <span class="k">elif</span> <span class="p">(</span><span class="nb">abs</span><span class="p">(</span><span class="n">pos_rad</span> <span class="o">-</span> <span class="n">tar_rad</span><span class="p">)</span> <span class="o">&lt;</span> <span class="n">counting_band_rad</span><span class="p">)</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">_prec_cont_band_entry_s</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="c1">#if it is the first entry to this condition =&gt; collect the timestamp</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_prec_est_terminating_t_s</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_prec_est_terminating_t_s</span> <span class="o">=</span> <span class="n">now_s</span>
+            <span class="c1">#if the time used is more than expected reach time we consider to force skip the trial</span>
+            <span class="c1">#NOTE: The reach time is calculated by double the time that use for reaching the 50% of the total distance and adding some buffer</span>
+            <span class="k">if</span> <span class="n">now_s</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">_t_start</span> <span class="o">&gt;=</span> <span class="p">((</span><span class="bp">self</span><span class="o">.</span><span class="n">_prec_est_terminating_t_s</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">_t_start</span><span class="p">)</span><span class="o">*</span><span class="mf">2.0</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">_buffer_reach_t_s</span><span class="p">):</span>
+                <span class="c1">#force skip the trial; _skip_trial() counts the target skip and flips the phase</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_prec_est_terminating_t_s</span> <span class="o">=</span> <span class="kc">None</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_skip_trial</span><span class="p">()</span>
+
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_prec_cont_band_entry_s</span> <span class="o">=</span> <span class="kc">None</span>
+</pre></div>
+</div>
+<p>The approach phase has three branches, checked in order. Inside the settling band: the
+familiar 0.5 s rule — on success the settled position joins the <strong>target group</strong> and the
+phase flips to the return. Inside the 50 % <em>counting band</em> but not the settling band:
+this is the auto-skip watch — the first crossing stamps <code class="docutils literal notranslate"><span class="pre">_prec_est_terminating_t_s</span></code>,
+and when the elapsed time exceeds <em>2 × time-to-halfway + buffer</em>, the phase is
+force-skipped. Outside both: the continuity counter resets, same as every other aspect.</p>
+<p><strong>Precision —</strong> <code class="docutils literal notranslate"><span class="pre">_update_prec</span></code>, phase 2 (return).</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">else</span><span class="p">:</span>
+    <span class="c1"># ── return→init (group 2) ── must settle at init, and it is now MEASURED</span>
+    <span class="c1">#lazily stamp the return-phase start on its first frame (its own skip timeout ref)</span>
+    <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_prec_return_t_start_s</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_prec_return_t_start_s</span> <span class="o">=</span> <span class="n">now_s</span>
+
+    <span class="k">if</span> <span class="nb">abs</span><span class="p">(</span><span class="n">pos_rad</span> <span class="o">-</span> <span class="n">init_rad</span><span class="p">)</span> <span class="o">&lt;</span> <span class="n">band_rad</span><span class="p">:</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_prec_cont_band_entry_s</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_prec_cont_band_entry_s</span> <span class="o">=</span> <span class="n">now_s</span>
+        <span class="k">if</span> <span class="n">now_s</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">_prec_cont_band_entry_s</span> <span class="o">&gt;=</span> <span class="n">SETTLING_WINDOW_s</span><span class="p">:</span>
+            <span class="c1">#record the return-to-init settled position, then flip back to approach</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_return_positions_rad</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">pos_rad</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_prec_at_target</span>         <span class="o">=</span> <span class="kc">False</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_prec_cont_band_entry_s</span> <span class="o">=</span> <span class="kc">None</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_prec_return_est_t_s</span>    <span class="o">=</span> <span class="kc">None</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_prec_return_t_start_s</span>  <span class="o">=</span> <span class="kc">None</span>
+            <span class="c1">#termination lives here: finish once `repeat` full cycles are done</span>
+            <span class="k">if</span> <span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_return_positions_rad</span><span class="p">)</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">_prec_return_skipped</span>
+                    <span class="o">&gt;=</span> <span class="n">payload</span><span class="p">[</span><span class="s2">&quot;repeat&quot;</span><span class="p">]):</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_finish_experiment</span><span class="p">()</span>
+                <span class="k">return</span>
+
+    <span class="c1">#gap 3: robot crossed the half-band back toward init but never settled =&gt; auto-skip</span>
+    <span class="k">elif</span> <span class="p">(</span><span class="nb">abs</span><span class="p">(</span><span class="n">pos_rad</span> <span class="o">-</span> <span class="n">init_rad</span><span class="p">)</span> <span class="o">&lt;</span> <span class="n">counting_band_rad</span><span class="p">)</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">_prec_cont_band_entry_s</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="c1">#first entry to this condition =&gt; collect the half-band-crossing timestamp</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_prec_return_est_t_s</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_prec_return_est_t_s</span> <span class="o">=</span> <span class="n">now_s</span>
+        <span class="c1">#mirror of the approach timeout: 2× the time-to-halfway plus a buffer</span>
+        <span class="k">if</span> <span class="n">now_s</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">_prec_return_t_start_s</span> <span class="o">&gt;=</span> <span class="p">((</span><span class="bp">self</span><span class="o">.</span><span class="n">_prec_return_est_t_s</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">_prec_return_t_start_s</span><span class="p">)</span><span class="o">*</span><span class="mf">2.0</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">_buffer_reach_t_s</span><span class="p">):</span>
+            <span class="c1">#force skip the return; _skip_trial() counts the return skip and flips the phase</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_prec_return_est_t_s</span> <span class="o">=</span> <span class="kc">None</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_skip_trial</span><span class="p">()</span>
+
+    <span class="k">else</span><span class="p">:</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_prec_cont_band_entry_s</span> <span class="o">=</span> <span class="kc">None</span>
+</pre></div>
+</div>
+<p>The mirror image of the approach, aimed at <code class="docutils literal notranslate"><span class="pre">init</span></code> instead of the target, with two extra
+details. The phase start time is stamped <strong>lazily</strong> on the phase’s first sample, because
+the return’s timeout must be measured from when the return actually began — not from the
+start of the whole run. And the <strong>termination check lives here</strong>: the run finishes when
+<em>returns done + returns skipped</em> reaches <code class="docutils literal notranslate"><span class="pre">repeat</span></code>, so the robot always completes its
+drive back to init before the summary is published.</p>
+<p><strong>The phase-aware skip —</strong> <code class="docutils literal notranslate"><span class="pre">_skip_trial</span></code>.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">def</span><span class="w"> </span><span class="nf">_skip_trial</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Advance the precision run past a stuck phase.</span>
+
+<span class="sd">    Single funnel for both the manual skip button (``_skip_iteration``) and the two</span>
+<span class="sd">    auto-skip timeouts in ``_update_prec``. It OWNS both the skip-counter selection</span>
+<span class="sd">    and the phase flip: the counter is chosen by reading ``_prec_at_target`` BEFORE</span>
+<span class="sd">    the phase is flipped, so callers must never pre-flip the phase.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="bp">self</span><span class="o">.</span><span class="n">_prec_cont_band_entry_s</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="c1">#NOTE: pick the skip counter from the CURRENT phase BEFORE flipping it below.</span>
+    <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_prec_at_target</span><span class="p">:</span>
+        <span class="c1"># return-to-init phase skipped =&gt; count a RETURN skip, then go back to approach</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_prec_return_skipped</span> <span class="o">+=</span> <span class="mi">1</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_prec_at_target</span>       <span class="o">=</span> <span class="kc">False</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_prec_return_est_t_s</span>  <span class="o">=</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">get_logger</span><span class="p">()</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;[Evaluator] precision return-to-init SKIPPED &quot;</span>
+            <span class="sa">f</span><span class="s2">&quot;(</span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_return_positions_rad</span><span class="p">)</span><span class="si">}</span><span class="s2"> done, </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">_prec_return_skipped</span><span class="si">}</span><span class="s2"> skipped)&quot;</span>
+        <span class="p">)</span>
+        <span class="c1">#termination lives in the return phase: this full cycle is done (return dropped)</span>
+        <span class="k">if</span> <span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_return_positions_rad</span><span class="p">)</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">_prec_return_skipped</span>
+                <span class="o">&gt;=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_payload</span><span class="p">[</span><span class="s2">&quot;repeat&quot;</span><span class="p">]):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_finish_experiment</span><span class="p">()</span>
+        <span class="k">return</span>
+
+    <span class="c1"># approach phase skipped =&gt; count a TARGET skip, then flip into the return phase</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">_prec_skipped</span>             <span class="o">+=</span> <span class="mi">1</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">_prec_at_target</span>            <span class="o">=</span> <span class="kc">True</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">_prec_est_terminating_t_s</span>  <span class="o">=</span> <span class="kc">None</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">_prec_return_t_start_s</span>     <span class="o">=</span> <span class="kc">None</span>   <span class="c1"># lazily re-stamped in the return branch</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">get_logger</span><span class="p">()</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+        <span class="sa">f</span><span class="s2">&quot;[Evaluator] precision trial SKIPPED &quot;</span>
+        <span class="sa">f</span><span class="s2">&quot;(</span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_trial_positions_rad</span><span class="p">)</span><span class="si">}</span><span class="s2"> done, </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">_prec_skipped</span><span class="si">}</span><span class="s2"> skipped)&quot;</span>
+    <span class="p">)</span>
+    <span class="c1">#NOTE: no termination check here anymore — termination lives in the return phase</span>
+</pre></div>
+</div>
+<p>One function is the <em>single funnel</em> for all three skip sources (the manual button and
+the two auto-skip timeouts), so the bookkeeping can never diverge. Its docstring states
+the one rule callers must respect: the function itself reads the current phase to choose
+the right skip counter <strong>before</strong> flipping the phase — a caller that pre-flipped the
+phase would make the skip land on the wrong counter. A skipped return still counts as a
+completed cycle for the termination check; a skipped approach only flips into the return
+phase, so the return half of that cycle is still observed.</p>
+<p><strong>The outputs —</strong> <code class="docutils literal notranslate"><span class="pre">_compute_live</span></code> <strong>and</strong> <code class="docutils literal notranslate"><span class="pre">_compute_summary</span></code>.</p>
+<p>Both functions are one <code class="docutils literal notranslate"><span class="pre">if</span></code> branch per aspect building a plain dictionary; the fields
+were already listed in each aspect’s workflow section. Two branches are worth reading in
+full. First the precision <strong>live</strong> branch, because of its phase-tracking reference:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">if</span> <span class="n">action</span> <span class="o">==</span> <span class="s2">&quot;precision&quot;</span><span class="p">:</span>
+    <span class="n">tar_rad</span>  <span class="o">=</span> <span class="n">_to_rad</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_payload</span><span class="p">[</span><span class="s2">&quot;target_pos&quot;</span><span class="p">],</span> <span class="bp">self</span><span class="o">.</span><span class="n">_payload</span><span class="p">[</span><span class="s2">&quot;unit&quot;</span><span class="p">])</span>
+    <span class="n">init_rad</span> <span class="o">=</span> <span class="n">_to_rad</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_payload</span><span class="p">[</span><span class="s2">&quot;init_pos&quot;</span><span class="p">],</span>   <span class="bp">self</span><span class="o">.</span><span class="n">_payload</span><span class="p">[</span><span class="s2">&quot;unit&quot;</span><span class="p">])</span>
+    <span class="c1">#the live reference tracks the ACTIVE phase: target while approaching, init</span>
+    <span class="c1">#while returning. app.js feeds target_rad into the amber reference line, so it</span>
+    <span class="c1">#follows the phase with no change on the JS drawing side.</span>
+    <span class="n">ref_rad</span> <span class="o">=</span> <span class="n">init_rad</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_prec_at_target</span> <span class="k">else</span> <span class="n">tar_rad</span>
+    <span class="k">return</span> <span class="p">{</span>
+        <span class="s2">&quot;target_rad&quot;</span><span class="p">:</span>        <span class="nb">round</span><span class="p">(</span><span class="n">ref_rad</span><span class="p">,</span> <span class="mi">5</span><span class="p">),</span>
+        <span class="s2">&quot;current_pos_rad&quot;</span><span class="p">:</span>   <span class="nb">round</span><span class="p">(</span><span class="n">pos_rad</span><span class="p">,</span> <span class="mi">5</span><span class="p">),</span>
+        <span class="s2">&quot;current_error_rad&quot;</span><span class="p">:</span> <span class="nb">round</span><span class="p">(</span><span class="nb">abs</span><span class="p">(</span><span class="n">pos_rad</span> <span class="o">-</span> <span class="n">ref_rad</span><span class="p">),</span> <span class="mi">5</span><span class="p">),</span>
+        <span class="s2">&quot;trials_done&quot;</span><span class="p">:</span>       <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_trial_positions_rad</span><span class="p">),</span>
+        <span class="s2">&quot;returns_done&quot;</span><span class="p">:</span>      <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_return_positions_rad</span><span class="p">),</span>
+        <span class="s2">&quot;trials_skipped&quot;</span><span class="p">:</span>    <span class="bp">self</span><span class="o">.</span><span class="n">_prec_skipped</span><span class="p">,</span>
+        <span class="s2">&quot;trials_total&quot;</span><span class="p">:</span>      <span class="bp">self</span><span class="o">.</span><span class="n">_payload</span><span class="p">[</span><span class="s2">&quot;repeat&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;elapsed_s&quot;</span><span class="p">:</span>         <span class="nb">round</span><span class="p">(</span><span class="n">elapsed_s</span><span class="p">,</span> <span class="mi">3</span><span class="p">),</span>
+    <span class="p">}</span>
+</pre></div>
+</div>
+<p>The reported “target” is whatever the robot is <em>currently</em> trying to reach — the target
+while approaching, init while returning. The browser draws its amber reference line from
+this field, so the line follows the phase with zero extra logic on the JavaScript side.</p>
+<p>And the precision <strong>summary</strong> branch, with its little scoring helper:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">if</span> <span class="n">action</span> <span class="o">==</span> <span class="s2">&quot;precision&quot;</span><span class="p">:</span>
+    <span class="n">tar_rad</span>    <span class="o">=</span> <span class="n">_to_rad</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_payload</span><span class="p">[</span><span class="s2">&quot;target_pos&quot;</span><span class="p">],</span> <span class="bp">self</span><span class="o">.</span><span class="n">_payload</span><span class="p">[</span><span class="s2">&quot;unit&quot;</span><span class="p">])</span>
+    <span class="n">init_rad</span>   <span class="o">=</span> <span class="n">_to_rad</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_payload</span><span class="p">[</span><span class="s2">&quot;init_pos&quot;</span><span class="p">],</span>   <span class="bp">self</span><span class="o">.</span><span class="n">_payload</span><span class="p">[</span><span class="s2">&quot;unit&quot;</span><span class="p">])</span>
+    <span class="n">n_required</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_payload</span><span class="p">[</span><span class="s2">&quot;repeat&quot;</span><span class="p">]</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_grp</span><span class="p">(</span><span class="n">positions</span><span class="p">,</span> <span class="n">ref_rad</span><span class="p">,</span> <span class="n">n_skipped</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Accuracy (mean/max error) + precision (std) of one phase group.&quot;&quot;&quot;</span>
+        <span class="n">errs</span> <span class="o">=</span> <span class="p">[</span><span class="nb">abs</span><span class="p">(</span><span class="n">p</span> <span class="o">-</span> <span class="n">ref_rad</span><span class="p">)</span> <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">positions</span><span class="p">]</span>
+        <span class="n">n</span>    <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">errs</span><span class="p">)</span>
+        <span class="n">mean</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">(</span><span class="n">errs</span><span class="p">)</span> <span class="o">/</span> <span class="n">n</span> <span class="k">if</span> <span class="n">n</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="k">else</span> <span class="mf">0.0</span>
+        <span class="n">std</span>  <span class="o">=</span> <span class="p">(</span><span class="n">math</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="nb">sum</span><span class="p">((</span><span class="n">e</span> <span class="o">-</span> <span class="n">mean</span><span class="p">)</span> <span class="o">**</span> <span class="mi">2</span> <span class="k">for</span> <span class="n">e</span> <span class="ow">in</span> <span class="n">errs</span><span class="p">)</span> <span class="o">/</span> <span class="n">n</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">n</span> <span class="o">&gt;</span> <span class="mi">1</span> <span class="k">else</span> <span class="mf">0.0</span><span class="p">)</span>
+        <span class="k">return</span> <span class="p">{</span>
+            <span class="s2">&quot;num_trials&quot;</span><span class="p">:</span>     <span class="n">n</span><span class="p">,</span>
+            <span class="s2">&quot;num_skipped&quot;</span><span class="p">:</span>    <span class="n">n_skipped</span><span class="p">,</span>
+            <span class="s2">&quot;mean_error_rad&quot;</span><span class="p">:</span> <span class="nb">round</span><span class="p">(</span><span class="n">mean</span><span class="p">,</span> <span class="mi">5</span><span class="p">),</span>
+            <span class="s2">&quot;std_error_rad&quot;</span><span class="p">:</span>  <span class="nb">round</span><span class="p">(</span><span class="n">std</span><span class="p">,</span> <span class="mi">5</span><span class="p">),</span>
+            <span class="s2">&quot;max_error_rad&quot;</span><span class="p">:</span>  <span class="nb">round</span><span class="p">(</span><span class="nb">max</span><span class="p">(</span><span class="n">errs</span><span class="p">)</span> <span class="k">if</span> <span class="n">errs</span> <span class="k">else</span> <span class="mf">0.0</span><span class="p">,</span> <span class="mi">5</span><span class="p">),</span>
+            <span class="c1">#return group reuses the same criteria as the target group</span>
+            <span class="s2">&quot;pass_error&quot;</span><span class="p">:</span>     <span class="n">n</span> <span class="o">&gt;=</span> <span class="n">n_required</span> <span class="ow">and</span> <span class="n">mean</span> <span class="o">&lt;=</span> <span class="n">c</span><span class="p">[</span><span class="s2">&quot;max_avg_error_rad&quot;</span><span class="p">],</span>
+        <span class="p">}</span>
+
+    <span class="k">return</span> <span class="p">{</span>
+        <span class="s2">&quot;target_rad&quot;</span><span class="p">:</span>   <span class="nb">round</span><span class="p">(</span><span class="n">tar_rad</span><span class="p">,</span> <span class="mi">5</span><span class="p">),</span>
+        <span class="s2">&quot;init_rad&quot;</span><span class="p">:</span>     <span class="nb">round</span><span class="p">(</span><span class="n">init_rad</span><span class="p">,</span> <span class="mi">5</span><span class="p">),</span>
+        <span class="c1">#group 1: init→target reaching performance</span>
+        <span class="s2">&quot;target_group&quot;</span><span class="p">:</span> <span class="n">_grp</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_trial_positions_rad</span><span class="p">,</span> <span class="n">tar_rad</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_prec_skipped</span><span class="p">),</span>
+        <span class="c1">#group 2: return→init returning performance</span>
+        <span class="s2">&quot;return_group&quot;</span><span class="p">:</span> <span class="n">_grp</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_return_positions_rad</span><span class="p">,</span> <span class="n">init_rad</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_prec_return_skipped</span><span class="p">),</span>
+    <span class="p">}</span>
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">_grp</span></code> scores one phase group: the <strong>mean</strong> error is the accuracy (how close on
+average), the <strong>standard deviation</strong> is the precision (how repeatable — the spread of
+the settled positions), plus the worst case and the skip count. The same helper is
+applied twice — once per phase — so the summary tells reaching and returning performance
+apart. The pass rule demands both a complete run (<code class="docutils literal notranslate"><span class="pre">n</span> <span class="pre">≥</span> <span class="pre">repeat</span></code>) and a small enough mean
+error. The other three summary branches follow the pass rules already given in their
+workflow sections (point-to-point additionally requires <em>settled</em> for the overshoot to
+pass, and performance compares its peaks with <strong>≥</strong> against the commanded values).
+<code class="docutils literal notranslate"><span class="pre">main</span></code> is the same standard entry point as on the other node pages.</p>
+</section>
+<section id="notation">
+<h2>Notation<a class="headerlink" href="#notation" title="Permalink to this heading"></a></h2>
+<p>Words used on this page.</p>
+<dl class="simple">
+<dt>event-driven</dt><dd><p>The node does nothing on its own clock — it only reacts when a message arrives.
+Between events it is idle and costs almost nothing.</p>
+</dd>
+<dt>payload</dt><dd><p>The JSON data attached to an event. It carries the test settings: <code class="docutils literal notranslate"><span class="pre">value</span></code> and
+<code class="docutils literal notranslate"><span class="pre">unit</span></code>, the <code class="docutils literal notranslate"><span class="pre">order_sequence</span></code>, <code class="docutils literal notranslate"><span class="pre">repeat</span></code>, and so on.</p>
+</dd>
+<dt>settling band / settled / settling window</dt><dd><p>The band is a small error window around the target,
+<code class="docutils literal notranslate"><span class="pre">max(0.01</span> <span class="pre">rad,</span> <span class="pre">settling_band_pct</span> <span class="pre">%</span> <span class="pre">×</span> <span class="pre">|travel|)</span></code>. The robot is <strong>settled</strong> when it
+stays inside the band continuously for the settling window (0.5 s). Same words as in
+the system-overview Notation.</p>
+</dd>
+<dt>overshoot</dt><dd><p>How far the robot passes the target before coming back, as a percentage of the
+travel distance. Measured direction-aware, from the tracked peak position.</p>
+</dd>
+<dt>waypoint</dt><dd><p>One target in the pick-and-place sequence. Each waypoint is scored on its own.</p>
+</dd>
+<dt>index (hole)</dt><dd><p>One hole on the 72-hole plate: 1 index = 360/72 = <strong>5°</strong> ≈ 0.08727 rad.</p>
+</dd>
+<dt>accuracy vs precision</dt><dd><p>Two different qualities. <strong>Accuracy</strong> = how close to the target on average (the mean
+error). <strong>Precision</strong> = how repeatable the stops are (the spread). A robot can be
+precise but inaccurate — always stopping at the same wrong place.</p>
+</dd>
+<dt>standard deviation (std)</dt><dd><p>A single number for spread: small std = the settled positions are clustered tightly
+together. This is the “precision” score of the precision test.</p>
+</dd>
+<dt>throttle</dt><dd><p>Deliberately limiting a rate. The live metrics are throttled to one message per
+0.1 s (10 Hz) so the browser is not flooded by the 500 Hz sample stream.</p>
+</dd>
+<dt>service server</dt><dd><p>The answering side of a ROS 2 service (the request/response pattern). This node
+<em>serves</em> <code class="docutils literal notranslate"><span class="pre">update_criteria</span></code>; the web visualizer holds the matching <em>client</em>.</p>
+</dd>
+<dt>phase (approach / return)</dt><dd><p>The two halves of one precision cycle: driving init → target (approach, group 1) and
+driving target → init (return, group 2). Each phase collects its own settled
+position and has its own skip counter.</p>
+</dd>
+<dt>auto-skip / force-skip</dt><dd><p>The node skips a stuck phase by itself, using the timeout rule
+<em>2 × time-to-halfway + 1 s buffer</em> — no fixed magic number, the limit adapts to how
+fast the robot actually moves.</p>
+</dd>
+<dt>all-or-nothing validation</dt><dd><p>A criteria update is applied only if <strong>every</strong> key and value in the request is
+valid; one bad entry rejects the whole request, so the limits can never end up
+half-updated.</p>
+</dd>
+</dl>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2026, Institute of Field Robotics.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>
