@@ -18,7 +18,8 @@
         <script src="../_static/sphinx_highlight.js?v=4825356b"></script>
     <script src="../_static/js/theme.js"></script>
     <link rel="index" title="Index" href="../genindex.html" />
-    <link rel="search" title="Search" href="../search.html" /> 
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="prev" title="Web UI" href="web_ui.html" /> 
 </head>
 
 <body class="wy-body-for-nav"> 
@@ -43,11 +44,32 @@
   </form>
 </div>
         </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
-              <ul>
+              <ul class="current">
 <li class="toctree-l1"><a class="reference internal" href="../system_overview.html">System Architecture &amp; Overview</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../get_started.html">Getting Started</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../Base%20System.html">Base System</a></li>
-<li class="toctree-l1"><a class="reference internal" href="verification_system.html">Verification System Implementation</a></li>
+<li class="toctree-l1 current"><a class="reference internal" href="verification_system.html">Verification System Implementation</a><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="verification_system_custom_interface/verification_system_custom_interface.html">Custom Interface</a></li>
+<li class="toctree-l2"><a class="reference internal" href="teensy_firmware.html">Teensy 4.1 Firmware</a></li>
+<li class="toctree-l2"><a class="reference internal" href="state_estimator_node.html">State Estimator Node</a></li>
+<li class="toctree-l2"><a class="reference internal" href="web_visualizer_node.html">Web Visualizer Node</a></li>
+<li class="toctree-l2"><a class="reference internal" href="web_ui.html">Web UI</a></li>
+<li class="toctree-l2 current"><a class="current reference internal" href="#">Experiment Evaluator Node</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#node-workflow">Node Workflow</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#the-big-picture">The big picture</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#shared-building-block-the-settling-band">Shared building block: the settling band</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#point-to-point-test">Point-to-Point test</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#pick-and-place-test">Pick-and-Place test</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#performance-test">Performance test</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#precision-test">Precision test</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="#examine-the-code">Examine the code</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#notation">Notation</a></li>
+</ul>
+</li>
+</ul>
+</li>
 </ul>
 
         </div>
@@ -64,6 +86,7 @@
           <div role="navigation" aria-label="Page navigation">
   <ul class="wy-breadcrumbs">
       <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="verification_system.html">Verification System Implementation</a></li>
       <li class="breadcrumb-item active">Experiment Evaluator Node</li>
       <li class="wy-breadcrumbs-aside">
             <a href="../_sources/verification_system/experiment_evaluator_node.rst.txt" rel="nofollow"> View page source</a>
@@ -1234,7 +1257,9 @@ half-updated.</p>
 
            </div>
           </div>
-          <footer>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="web_ui.html" class="btn btn-neutral float-left" title="Web UI" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+    </div>
 
   <hr/>
 

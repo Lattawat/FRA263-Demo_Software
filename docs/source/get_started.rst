@@ -98,6 +98,7 @@ Step 2 — Install the system packages
    sudo apt update
    sudo apt install -y \
        git \
+       cmake \
        python3-venv \
        python3-pip \
        python3-tk \
@@ -107,6 +108,7 @@ Step 2 — Install the system packages
 **Why these.** ``python3-tk`` is the Tkinter library — ``mock_ui`` is a Tkinter window, so
 without it Method 1 cannot start. ``python3-colcon-common-extensions`` provides the
 ``colcon`` build tool. ``python3-rosdep`` resolves the micro-ROS dependencies in Step 5.
+``cmake`` is used by the Teensy firmware cross-build in Step 7.
 
 **USB permission.** Both the Teensy and the robot appear as USB serial devices. A normal
 user cannot open them until it belongs to the ``dialout`` group:
@@ -147,7 +149,7 @@ The project keeps its Python packages in one virtual environment at the reposito
 
 Make sure that the (.venv) is activated. Then, install the dependencies.
 
-..code-block:: bash
+.. code-block:: bash
 
    pip install -r requirements.txt
 
@@ -157,13 +159,16 @@ System back-end.
 
 .. note::
 
-   **The one part that is easy to get wrong is how the virtual environment and ROS 2 fit
-   together.** The environment is created *without* system site-packages, so at first glance
-   ``rclpy`` should not be importable inside it. It works anyway: sourcing
-   ``/opt/ros/jazzy/setup.bash`` puts the ROS ``site-packages`` folder on ``PYTHONPATH``, and
-   ``PYTHONPATH`` is searched regardless of the virtual environment. This only holds because
-   the environment and ROS 2 Jazzy use the **same Python 3.12**. So you must source ROS *and*
-   activate the environment — one without the other leaves half the imports missing.
+   **Two sets of Python packages.** The virtual environment provides the pip packages
+   (``pylsl``, ``websockets``, ``pymodbus``, ``pyserial``, ``PyYAML``). ROS 2 provides
+   ``rclpy`` and the message packages.
+
+   Sourcing ``/opt/ros/jazzy/setup.bash`` adds the ROS packages to the path Python searches,
+   so they can be imported inside the virtual environment. This works because both use
+   Python 3.12.
+
+   Every terminal needs both. Activate the environment only and ``rclpy`` is missing; source
+   ROS 2 only and ``pylsl`` is missing.
 
 .. note::
 
@@ -177,11 +182,9 @@ Step 5 — Install the micro-ROS agent
 
 The agent is the program that carries messages from the Teensy into the ROS 2 network.
 
-**The trap.** The repository records ``src/micro_ros_setup`` and ``src/uros/*`` as git links
-(commit pointers) but ships **no** ``.gitmodules`` file to say where they come from. After
-cloning, those folders are **empty**, and ``git submodule update --init`` fails with
-*no submodule mapping found*. Do not fight it — build the agent with the official micro-ROS
-tool instead, which fills the same folders:
+**micro-ROS is not part of this repository.** It is maintained by the micro-ROS project, so you
+fetch and build it yourself with their official tool. The commands below add it into
+``claude-visualizer-ws/src/`` and build it next to the project packages:
 
 .. code-block:: bash
 
@@ -235,13 +238,203 @@ The first build takes several minutes, mostly generating the custom message type
    If this workspace was ever built with ``--symlink-install``, delete ``build/``,
    ``install/`` and ``log/`` first, then build again.
 
-Step 7 — Flash the Teensy firmware
-----------------------------------
+Step 7 — Build and flash the Teensy firmware
+--------------------------------------------
 
 *Needed only for Method 2 (with hardware).*
 
-The firmware lives in ``claude-visualizer-ws/encoder_data_publisher/`` and is built with
-PlatformIO. Three settings **must** match the host PC, or the messages never arrive:
+The firmware is a PlatformIO project in ``claude-visualizer-ws/encoder_data_publisher/``. It
+reads the encoder and publishes ``/G<N>/encoder_raw``.
+
+**Why this build is slower and fussier than a normal Arduino sketch.** The firmware sends one
+of our own messages (``EncoderRaw``). On a PC a message package is just a build dependency,
+loaded at run time. A microcontroller has no run time to load anything, so the **entire
+micro-ROS C library — including our message — is cross-compiled into one static library** when
+PlatformIO builds the firmware. The message has to be part of *that* build; it cannot be added
+afterwards. The pieces below are what make it happen.
+
+Install PlatformIO
+~~~~~~~~~~~~~~~~~~
+
+Either install the VS Code **PlatformIO IDE** extension, or install the command-line tool:
+
+.. code-block:: bash
+
+   pip install platformio
+
+.. warning::
+
+   **Use one ``pio`` and stay with it.** PlatformIO can end up installed twice: system-wide
+   (``/usr/bin/pio``) and inside its own managed environment
+   (``~/.platformio/penv/bin/pio``), which is the one the VS Code extension always uses. The
+   two keep separate build caches, so mixing them on the same project gives builds that
+   disagree with each other for no visible reason. This guide uses the managed one.
+
+Allow the Teensy to be flashed
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+A USB device belongs to ``root`` by default, so PlatformIO cannot write to the board and the
+upload fails with a permission error. The rules file from PJRC (the Teensy maker) gives your
+user access to Teensy boards:
+
+.. code-block:: bash
+
+   sudo curl -fsSL https://www.pjrc.com/teensy/00-teensy.rules -o /etc/udev/rules.d/00-teensy.rules
+   sudo udevadm control --reload-rules && sudo udevadm trigger
+
+What is already set up
+~~~~~~~~~~~~~~~~~~~~~~
+
+Three pieces make the custom message reach the firmware. **All three come with the clone — you
+do not create them.** They are described here so you can check them, and so you know what to do
+when you add another message package later.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 34 66
+
+   * - File
+     - What it does
+   * - ``platformio.ini``
+     - Board, transport and micro-ROS build settings.
+   * - ``extra_packages/claude_visualizer_interface``
+     - A **symlink** to the message package in the ROS 2 workspace.
+   * - ``colcon.meta``
+     - Lists the packages to compile into the firmware library.
+
+**1. ``platformio.ini`` — the build and transport settings.**
+
+.. code-block:: ini
+
+   lib_deps = https://github.com/micro-ROS/micro_ros_platformio
+   board_microros_distro = jazzy
+   board_microros_transport = serial
+   board_microros_user_meta = colcon.meta
+
+- ``lib_deps`` pulls in the ``micro_ros_platformio`` library, which runs the cross-compilation.
+- ``board_microros_distro = jazzy`` chooses which ROS 2 distribution's message definitions are
+  generated. It **must match the ROS 2 distribution on this PC** (Step 1), or the board and the
+  agent disagree about the message layout and nothing arrives.
+- ``board_microros_transport = serial`` selects the USB-serial transport.
+- ``board_microros_user_meta = colcon.meta`` points at the file below.
+
+**2. The ``extra_packages`` symlink.**
+
+The build always looks for custom message packages in a folder named ``extra_packages`` next to
+``platformio.ini``. Instead of copying the package in, the project puts a symlink there that
+points back to the real package in the workspace:
+
+.. code-block:: text
+
+   encoder_data_publisher/extra_packages/claude_visualizer_interface
+       -> ../../src/claude_visualizer_interface
+
+Because it is a symlink, the PC nodes and the firmware are built from **one** definition, so
+``EncoderRaw`` can never drift apart between them.
+
+Check that it survived the clone — some copy tools replace a symlink with a real folder:
+
+.. code-block:: bash
+
+   cd ~/FRA263-Demo_Software/claude-visualizer-ws/encoder_data_publisher
+   ls -l extra_packages/
+   # expected:  claude_visualizer_interface -> ../../src/claude_visualizer_interface
+
+If it is missing or has become a real folder, recreate it (this is also how you add a second
+message package):
+
+.. code-block:: bash
+
+   rm -rf extra_packages/claude_visualizer_interface
+   ln -s ../../src/claude_visualizer_interface extra_packages/claude_visualizer_interface
+
+**3. ``colcon.meta`` — the list of packages to compile in.**
+
+.. code-block:: json
+
+   {
+       "names": {
+           "micro_ros_msgs": {},
+           "claude_visualizer_interface": {}
+       }
+   }
+
+This is the file ``board_microros_user_meta`` points at. Listing
+``claude_visualizer_interface`` here is what tells the cross-compile step to build our package
+into the static library. The empty ``{}`` means "use the default build settings".
+
+.. note::
+
+   Two different things in this project are called a symlink, and only one of them is wanted.
+   The colcon flag ``--symlink-install`` is **not** to be used (Step 6). The
+   ``extra_packages`` symlink here is **required**. They are unrelated.
+
+Set the group number
+~~~~~~~~~~~~~~~~~~~~
+
+The group number is compiled into the firmware. Open
+``encoder_data_publisher/src/main.cpp`` and set it:
+
+.. code-block:: cpp
+
+   #define GROUP_NUMBER 1        // -> node namespace /G1
+
+.. warning::
+
+   **The defaults do not match out of the box.** The firmware ships with ``GROUP_NUMBER 1``,
+   while the launch file and the Base System back-end default to ``0``. Set them all to the
+   same ``N`` and reflash, or the Teensy publishes on ``/G1/encoder_raw`` while the rest of the
+   system listens on ``/G0/encoder_raw``.
+
+The ROS domain is hard-coded in the same file and must equal ``ROS_DOMAIN_ID`` on the host:
+
+.. code-block:: cpp
+
+   rcl_init_options_set_domain_id(&init_options, 156);
+
+Build the firmware
+~~~~~~~~~~~~~~~~~~
+
+Source ROS 2 **before** building. The ``micro_ros_platformio`` build script runs ``colcon
+build`` internally to cross-compile the library, so without a sourced ROS 2 it fails before it
+ever reaches your code.
+
+.. code-block:: bash
+
+   cd ~/FRA263-Demo_Software/claude-visualizer-ws/encoder_data_publisher
+   source /opt/ros/jazzy/setup.bash
+   ~/.platformio/penv/bin/pio run
+
+The first build takes 5–15 minutes. It downloads ``micro_ros_platformio``, cross-compiles the
+micro-ROS library with the ARM compiler, generates the message headers, and produces the static
+library that is linked into the firmware. Later builds are much faster.
+
+Flash the board
+~~~~~~~~~~~~~~~
+
+.. code-block:: bash
+
+   ~/.platformio/penv/bin/pio run -t upload
+
+The project uses ``upload_protocol = teensy-gui``, so the Teensy Loader application performs
+the flash. If it does not start on its own, press the button on the board.
+
+After changing a message
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+If you edit a ``.msg`` file or ``colcon.meta``, clean the micro-ROS library before rebuilding:
+
+.. code-block:: bash
+
+   ~/.platformio/penv/bin/pio run -t clean_microros
+   ~/.platformio/penv/bin/pio run
+
+**Why.** An incremental build sees no changed ``.cpp`` file and skips rebuilding the micro-ROS
+library, so the firmware silently keeps the **old** message definition. This is the usual cause
+of "I edited the message but the firmware still uses the old fields".
+
+Settings that must match the host
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. list-table::
    :header-rows: 1
@@ -260,7 +453,7 @@ PlatformIO. Three settings **must** match the host PC, or the messages never arr
      - ``N``
      - The ``group_number`` everything else is started with.
 
-The full build and flash procedure, and the reasoning behind each setting, are in
+The reasoning behind each setting, and a walkthrough of the firmware code, are in
 ``claude-visualizer-ws/encoder_data_publisher/MICROROS_NOTES.md`` and on the
 :doc:`verification_system/teensy_firmware` page.
 
@@ -524,9 +717,9 @@ Troubleshooting
    * - ``ModuleNotFoundError: No module named 'rclpy'``
      - ROS 2 not sourced (the environment alone does not provide it).
      - Source ROS 2 as well — see :ref:`environment-prep`.
-   * - ``Package 'micro_ros_agent' not found``, or ``src/uros`` is empty
-     - Step 5 was skipped, or the git links were never filled.
-     - Run Step 5. ``git submodule update --init`` will not work here.
+   * - ``Package 'micro_ros_agent' not found``
+     - Step 5 was skipped — micro-ROS is not part of the clone.
+     - Run Step 5.
    * - ``Permission denied: '/dev/ttyACM0'``
      - The user is not in the ``dialout`` group.
      - ``sudo usermod -aG dialout $USER``, then log out and back in.

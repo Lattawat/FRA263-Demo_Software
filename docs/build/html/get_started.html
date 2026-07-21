@@ -55,11 +55,21 @@
 <li class="toctree-l2"><a class="reference internal" href="#step-4-create-the-python-environment">Step 4 — Create the Python environment</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#step-5-install-the-micro-ros-agent">Step 5 — Install the micro-ROS agent</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#step-6-build-the-workspace">Step 6 — Build the workspace</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#step-7-flash-the-teensy-firmware">Step 7 — Flash the Teensy firmware</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#step-7-build-and-flash-the-teensy-firmware">Step 7 — Build and flash the Teensy firmware</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#install-platformio">Install PlatformIO</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#allow-the-teensy-to-be-flashed">Allow the Teensy to be flashed</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#what-is-already-set-up">What is already set up</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#set-the-group-number">Set the group number</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#build-the-firmware">Build the firmware</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#flash-the-board">Flash the board</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#after-changing-a-message">After changing a message</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#settings-that-must-match-the-host">Settings that must match the host</a></li>
+</ul>
+</li>
 <li class="toctree-l2"><a class="reference internal" href="#step-8-load-the-front-end-ui-image">Step 8 — Load the front-end UI image</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#step-9-check-the-installation">Step 9 — Check the installation</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#running-the-system">Running the system</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="#the-environment-recipe">The environment recipe</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#the-environment-preparation">The environment preparation</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#method-1-run-without-hardware">Method 1 — Run without hardware</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#method-2-run-with-hardware">Method 2 — Run with hardware</a></li>
 </ul>
@@ -199,7 +209,7 @@ printenv<span class="w"> </span>ROS_DISTRO<span class="w">          </span><span
 <div class="admonition note">
 <p class="admonition-title">Note</p>
 <p>Sourcing <code class="docutils literal notranslate"><span class="pre">setup.bash</span></code> only affects the terminal you run it in. Every new terminal needs
-it again — see <a class="reference internal" href="#environment-recipe"><span class="std std-ref">The environment recipe</span></a>.</p>
+it again — see <a class="reference internal" href="#environment-prep"><span class="std std-ref">The environment preparation</span></a>.</p>
 </div>
 </section>
 <section id="step-2-install-the-system-packages">
@@ -207,6 +217,7 @@ it again — see <a class="reference internal" href="#environment-recipe"><span 
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>sudo<span class="w"> </span>apt<span class="w"> </span>update
 sudo<span class="w"> </span>apt<span class="w"> </span>install<span class="w"> </span>-y<span class="w"> </span><span class="se">\</span>
 <span class="w">    </span>git<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>cmake<span class="w"> </span><span class="se">\</span>
 <span class="w">    </span>python3-venv<span class="w"> </span><span class="se">\</span>
 <span class="w">    </span>python3-pip<span class="w"> </span><span class="se">\</span>
 <span class="w">    </span>python3-tk<span class="w"> </span><span class="se">\</span>
@@ -216,14 +227,16 @@ sudo<span class="w"> </span>apt<span class="w"> </span>install<span class="w"> <
 </div>
 <p><strong>Why these.</strong> <code class="docutils literal notranslate"><span class="pre">python3-tk</span></code> is the Tkinter library — <code class="docutils literal notranslate"><span class="pre">mock_ui</span></code> is a Tkinter window, so
 without it Method 1 cannot start. <code class="docutils literal notranslate"><span class="pre">python3-colcon-common-extensions</span></code> provides the
-<code class="docutils literal notranslate"><span class="pre">colcon</span></code> build tool. <code class="docutils literal notranslate"><span class="pre">python3-rosdep</span></code> resolves the micro-ROS dependencies in Step 5.</p>
+<code class="docutils literal notranslate"><span class="pre">colcon</span></code> build tool. <code class="docutils literal notranslate"><span class="pre">python3-rosdep</span></code> resolves the micro-ROS dependencies in Step 5.
+<code class="docutils literal notranslate"><span class="pre">cmake</span></code> is used by the Teensy firmware cross-build in Step 7.</p>
 <p><strong>USB permission.</strong> Both the Teensy and the robot appear as USB serial devices. A normal
 user cannot open them until it belongs to the <code class="docutils literal notranslate"><span class="pre">dialout</span></code> group:</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>sudo<span class="w"> </span>usermod<span class="w"> </span>-aG<span class="w"> </span>dialout<span class="w"> </span><span class="nv">$USER</span>
 </pre></div>
 </div>
-<p>Log out and back in for the group to take effect. Skipping this gives
-<code class="docutils literal notranslate"><span class="pre">Permission</span> <span class="pre">denied:</span> <span class="pre">'/dev/ttyACM0'</span></code> later, with nothing else to explain it.</p>
+<p>Log out the session (the same method as shutdown, but select log out instead) and back in
+to take effect. Skipping this gives <code class="docutils literal notranslate"><span class="pre">Permission</span> <span class="pre">denied:</span> <span class="pre">'/dev/ttyACM0'</span></code> later, with
+nothing else to explain it.</p>
 </section>
 <section id="step-3-clone-the-repository">
 <h2>Step 3 — Clone the repository<a class="headerlink" href="#step-3-clone-the-repository" title="Permalink to this heading"></a></h2>
@@ -233,9 +246,6 @@ git<span class="w"> </span>clone<span class="w"> </span>https://github.com/Latta
 </pre></div>
 </div>
 <p>The rest of this page uses <code class="docutils literal notranslate"><span class="pre">~/FRA263-Demo_Software</span></code> as the project root.</p>
-<p><strong>What the clone does not bring.</strong> <code class="docutils literal notranslate"><span class="pre">build/</span></code>, <code class="docutils literal notranslate"><span class="pre">install/</span></code>, <code class="docutils literal notranslate"><span class="pre">log/</span></code> and <code class="docutils literal notranslate"><span class="pre">.venv</span></code> are
-ignored by git, so you create them yourself in the steps below. The micro-ROS folders are a
-special case — see Step 5.</p>
 </section>
 <section id="step-4-create-the-python-environment">
 <h2>Step 4 — Create the Python environment<a class="headerlink" href="#step-4-create-the-python-environment" title="Permalink to this heading"></a></h2>
@@ -243,7 +253,10 @@ special case — see Step 5.</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="nb">cd</span><span class="w"> </span>~/FRA263-Demo_Software
 python3<span class="w"> </span>-m<span class="w"> </span>venv<span class="w"> </span>.venv
 <span class="nb">source</span><span class="w"> </span>.venv/bin/activate
-pip<span class="w"> </span>install<span class="w"> </span>-r<span class="w"> </span>requirements.txt
+</pre></div>
+</div>
+<p>Make sure that the (.venv) is activated. Then, install the dependencies.</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pip<span class="w"> </span>install<span class="w"> </span>-r<span class="w"> </span>requirements.txt
 </pre></div>
 </div>
 <p><code class="docutils literal notranslate"><span class="pre">requirements.txt</span></code> holds every pip package the project needs — <code class="docutils literal notranslate"><span class="pre">pylsl</span></code>, <code class="docutils literal notranslate"><span class="pre">websockets</span></code>,
@@ -251,13 +264,14 @@ pip<span class="w"> </span>install<span class="w"> </span>-r<span class="w"> </s
 System back-end.</p>
 <div class="admonition note">
 <p class="admonition-title">Note</p>
-<p><strong>The one part that is easy to get wrong is how the virtual environment and ROS 2 fit
-together.</strong> The environment is created <em>without</em> system site-packages, so at first glance
-<code class="docutils literal notranslate"><span class="pre">rclpy</span></code> should not be importable inside it. It works anyway: sourcing
-<code class="docutils literal notranslate"><span class="pre">/opt/ros/jazzy/setup.bash</span></code> puts the ROS <code class="docutils literal notranslate"><span class="pre">site-packages</span></code> folder on <code class="docutils literal notranslate"><span class="pre">PYTHONPATH</span></code>, and
-<code class="docutils literal notranslate"><span class="pre">PYTHONPATH</span></code> is searched regardless of the virtual environment. This only holds because
-the environment and ROS 2 Jazzy use the <strong>same Python 3.12</strong>. So you must source ROS <em>and</em>
-activate the environment — one without the other leaves half the imports missing.</p>
+<p><strong>Two sets of Python packages.</strong> The virtual environment provides the pip packages
+(<code class="docutils literal notranslate"><span class="pre">pylsl</span></code>, <code class="docutils literal notranslate"><span class="pre">websockets</span></code>, <code class="docutils literal notranslate"><span class="pre">pymodbus</span></code>, <code class="docutils literal notranslate"><span class="pre">pyserial</span></code>, <code class="docutils literal notranslate"><span class="pre">PyYAML</span></code>). ROS 2 provides
+<code class="docutils literal notranslate"><span class="pre">rclpy</span></code> and the message packages.</p>
+<p>Sourcing <code class="docutils literal notranslate"><span class="pre">/opt/ros/jazzy/setup.bash</span></code> adds the ROS packages to the path Python searches,
+so they can be imported inside the virtual environment. This works because both use
+Python 3.12.</p>
+<p>Every terminal needs both. Activate the environment only and <code class="docutils literal notranslate"><span class="pre">rclpy</span></code> is missing; source
+ROS 2 only and <code class="docutils literal notranslate"><span class="pre">pylsl</span></code> is missing.</p>
 </div>
 <div class="admonition note">
 <p class="admonition-title">Note</p>
@@ -269,11 +283,9 @@ LSL system library to install.</p>
 <h2>Step 5 — Install the micro-ROS agent<a class="headerlink" href="#step-5-install-the-micro-ros-agent" title="Permalink to this heading"></a></h2>
 <p><em>Needed only for Method 2 (with hardware). Skip it if you only want the no-hardware run.</em></p>
 <p>The agent is the program that carries messages from the Teensy into the ROS 2 network.</p>
-<p><strong>The trap.</strong> The repository records <code class="docutils literal notranslate"><span class="pre">src/micro_ros_setup</span></code> and <code class="docutils literal notranslate"><span class="pre">src/uros/*</span></code> as git links
-(commit pointers) but ships <strong>no</strong> <code class="docutils literal notranslate"><span class="pre">.gitmodules</span></code> file to say where they come from. After
-cloning, those folders are <strong>empty</strong>, and <code class="docutils literal notranslate"><span class="pre">git</span> <span class="pre">submodule</span> <span class="pre">update</span> <span class="pre">--init</span></code> fails with
-<em>no submodule mapping found</em>. Do not fight it — build the agent with the official micro-ROS
-tool instead, which fills the same folders:</p>
+<p><strong>micro-ROS is not part of this repository.</strong> It is maintained by the micro-ROS project, so you
+fetch and build it yourself with their official tool. The commands below add it into
+<code class="docutils literal notranslate"><span class="pre">claude-visualizer-ws/src/</span></code> and build it next to the project packages:</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="nb">cd</span><span class="w"> </span>~/FRA263-Demo_Software/claude-visualizer-ws
 <span class="nb">source</span><span class="w"> </span>/opt/ros/jazzy/setup.bash
 
@@ -313,19 +325,186 @@ colcon<span class="w"> </span>build
 <p>The first build takes several minutes, mostly generating the custom message types.</p>
 <div class="admonition warning">
 <p class="admonition-title">Warning</p>
-<p><strong>Do not use</strong> <code class="docutils literal notranslate"><span class="pre">--symlink-install</span></code>. It makes <code class="docutils literal notranslate"><span class="pre">install/</span></code> point back at the files in
-<code class="docutils literal notranslate"><span class="pre">src/</span></code> instead of copying them. The moment you rename or delete a source file, the link
-goes stale and the workspace keeps loading an old or missing file — and the error it
-throws never points at the real cause. Always build with plain <code class="docutils literal notranslate"><span class="pre">colcon</span> <span class="pre">build</span></code>.</p>
+<p><strong>Do not use</strong> <code class="docutils literal notranslate"><span class="pre">--symlink-install</span></code>. Always build with plain <code class="docutils literal notranslate"><span class="pre">colcon</span> <span class="pre">build</span></code>.
+The developer cannot remember the reason, but there are some error when <code class="docutils literal notranslate"><span class="pre">install/</span></code>
+point back at the files in <code class="docutils literal notranslate"><span class="pre">src/</span></code> instead of copying them.</p>
 <p>If this workspace was ever built with <code class="docutils literal notranslate"><span class="pre">--symlink-install</span></code>, delete <code class="docutils literal notranslate"><span class="pre">build/</span></code>,
 <code class="docutils literal notranslate"><span class="pre">install/</span></code> and <code class="docutils literal notranslate"><span class="pre">log/</span></code> first, then build again.</p>
 </div>
 </section>
-<section id="step-7-flash-the-teensy-firmware">
-<h2>Step 7 — Flash the Teensy firmware<a class="headerlink" href="#step-7-flash-the-teensy-firmware" title="Permalink to this heading"></a></h2>
+<section id="step-7-build-and-flash-the-teensy-firmware">
+<h2>Step 7 — Build and flash the Teensy firmware<a class="headerlink" href="#step-7-build-and-flash-the-teensy-firmware" title="Permalink to this heading"></a></h2>
 <p><em>Needed only for Method 2 (with hardware).</em></p>
-<p>The firmware lives in <code class="docutils literal notranslate"><span class="pre">claude-visualizer-ws/encoder_data_publisher/</span></code> and is built with
-PlatformIO. Three settings <strong>must</strong> match the host PC, or the messages never arrive:</p>
+<p>The firmware is a PlatformIO project in <code class="docutils literal notranslate"><span class="pre">claude-visualizer-ws/encoder_data_publisher/</span></code>. It
+reads the encoder and publishes <code class="docutils literal notranslate"><span class="pre">/G&lt;N&gt;/encoder_raw</span></code>.</p>
+<p><strong>Why this build is slower and fussier than a normal Arduino sketch.</strong> The firmware sends one
+of our own messages (<code class="docutils literal notranslate"><span class="pre">EncoderRaw</span></code>). On a PC a message package is just a build dependency,
+loaded at run time. A microcontroller has no run time to load anything, so the <strong>entire
+micro-ROS C library — including our message — is cross-compiled into one static library</strong> when
+PlatformIO builds the firmware. The message has to be part of <em>that</em> build; it cannot be added
+afterwards. The pieces below are what make it happen.</p>
+<section id="install-platformio">
+<h3>Install PlatformIO<a class="headerlink" href="#install-platformio" title="Permalink to this heading"></a></h3>
+<p>Either install the VS Code <strong>PlatformIO IDE</strong> extension, or install the command-line tool:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pip<span class="w"> </span>install<span class="w"> </span>platformio
+</pre></div>
+</div>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p><strong>Use one ``pio`` and stay with it.</strong> PlatformIO can end up installed twice: system-wide
+(<code class="docutils literal notranslate"><span class="pre">/usr/bin/pio</span></code>) and inside its own managed environment
+(<code class="docutils literal notranslate"><span class="pre">~/.platformio/penv/bin/pio</span></code>), which is the one the VS Code extension always uses. The
+two keep separate build caches, so mixing them on the same project gives builds that
+disagree with each other for no visible reason. This guide uses the managed one.</p>
+</div>
+</section>
+<section id="allow-the-teensy-to-be-flashed">
+<h3>Allow the Teensy to be flashed<a class="headerlink" href="#allow-the-teensy-to-be-flashed" title="Permalink to this heading"></a></h3>
+<p>A USB device belongs to <code class="docutils literal notranslate"><span class="pre">root</span></code> by default, so PlatformIO cannot write to the board and the
+upload fails with a permission error. The rules file from PJRC (the Teensy maker) gives your
+user access to Teensy boards:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>sudo<span class="w"> </span>curl<span class="w"> </span>-fsSL<span class="w"> </span>https://www.pjrc.com/teensy/00-teensy.rules<span class="w"> </span>-o<span class="w"> </span>/etc/udev/rules.d/00-teensy.rules
+sudo<span class="w"> </span>udevadm<span class="w"> </span>control<span class="w"> </span>--reload-rules<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>sudo<span class="w"> </span>udevadm<span class="w"> </span>trigger
+</pre></div>
+</div>
+</section>
+<section id="what-is-already-set-up">
+<h3>What is already set up<a class="headerlink" href="#what-is-already-set-up" title="Permalink to this heading"></a></h3>
+<p>Three pieces make the custom message reach the firmware. <strong>All three come with the clone — you
+do not create them.</strong> They are described here so you can check them, and so you know what to do
+when you add another message package later.</p>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 34%" />
+<col style="width: 66%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>File</p></th>
+<th class="head"><p>What it does</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">platformio.ini</span></code></p></td>
+<td><p>Board, transport and micro-ROS build settings.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">extra_packages/claude_visualizer_interface</span></code></p></td>
+<td><p>A <strong>symlink</strong> to the message package in the ROS 2 workspace.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">colcon.meta</span></code></p></td>
+<td><p>Lists the packages to compile into the firmware library.</p></td>
+</tr>
+</tbody>
+</table>
+<p><strong>1. ``platformio.ini`` — the build and transport settings.</strong></p>
+<div class="highlight-ini notranslate"><div class="highlight"><pre><span></span><span class="na">lib_deps</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">https://github.com/micro-ROS/micro_ros_platformio</span>
+<span class="na">board_microros_distro</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">jazzy</span>
+<span class="na">board_microros_transport</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">serial</span>
+<span class="na">board_microros_user_meta</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">colcon.meta</span>
+</pre></div>
+</div>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">lib_deps</span></code> pulls in the <code class="docutils literal notranslate"><span class="pre">micro_ros_platformio</span></code> library, which runs the cross-compilation.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">board_microros_distro</span> <span class="pre">=</span> <span class="pre">jazzy</span></code> chooses which ROS 2 distribution’s message definitions are
+generated. It <strong>must match the ROS 2 distribution on this PC</strong> (Step 1), or the board and the
+agent disagree about the message layout and nothing arrives.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">board_microros_transport</span> <span class="pre">=</span> <span class="pre">serial</span></code> selects the USB-serial transport.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">board_microros_user_meta</span> <span class="pre">=</span> <span class="pre">colcon.meta</span></code> points at the file below.</p></li>
+</ul>
+<p><strong>2. The ``extra_packages`` symlink.</strong></p>
+<p>The build always looks for custom message packages in a folder named <code class="docutils literal notranslate"><span class="pre">extra_packages</span></code> next to
+<code class="docutils literal notranslate"><span class="pre">platformio.ini</span></code>. Instead of copying the package in, the project puts a symlink there that
+points back to the real package in the workspace:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>encoder_data_publisher/extra_packages/claude_visualizer_interface
+    -&gt; ../../src/claude_visualizer_interface
+</pre></div>
+</div>
+<p>Because it is a symlink, the PC nodes and the firmware are built from <strong>one</strong> definition, so
+<code class="docutils literal notranslate"><span class="pre">EncoderRaw</span></code> can never drift apart between them.</p>
+<p>Check that it survived the clone — some copy tools replace a symlink with a real folder:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="nb">cd</span><span class="w"> </span>~/FRA263-Demo_Software/claude-visualizer-ws/encoder_data_publisher
+ls<span class="w"> </span>-l<span class="w"> </span>extra_packages/
+<span class="c1"># expected:  claude_visualizer_interface -&gt; ../../src/claude_visualizer_interface</span>
+</pre></div>
+</div>
+<p>If it is missing or has become a real folder, recreate it (this is also how you add a second
+message package):</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>rm<span class="w"> </span>-rf<span class="w"> </span>extra_packages/claude_visualizer_interface
+ln<span class="w"> </span>-s<span class="w"> </span>../../src/claude_visualizer_interface<span class="w"> </span>extra_packages/claude_visualizer_interface
+</pre></div>
+</div>
+<p><strong>3. ``colcon.meta`` — the list of packages to compile in.</strong></p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;names&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nt">&quot;micro_ros_msgs&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{},</span>
+<span class="w">        </span><span class="nt">&quot;claude_visualizer_interface&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{}</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p>This is the file <code class="docutils literal notranslate"><span class="pre">board_microros_user_meta</span></code> points at. Listing
+<code class="docutils literal notranslate"><span class="pre">claude_visualizer_interface</span></code> here is what tells the cross-compile step to build our package
+into the static library. The empty <code class="docutils literal notranslate"><span class="pre">{}</span></code> means “use the default build settings”.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Two different things in this project are called a symlink, and only one of them is wanted.
+The colcon flag <code class="docutils literal notranslate"><span class="pre">--symlink-install</span></code> is <strong>not</strong> to be used (Step 6). The
+<code class="docutils literal notranslate"><span class="pre">extra_packages</span></code> symlink here is <strong>required</strong>. They are unrelated.</p>
+</div>
+</section>
+<section id="set-the-group-number">
+<h3>Set the group number<a class="headerlink" href="#set-the-group-number" title="Permalink to this heading"></a></h3>
+<p>The group number is compiled into the firmware. Open
+<code class="docutils literal notranslate"><span class="pre">encoder_data_publisher/src/main.cpp</span></code> and set it:</p>
+<div class="highlight-cpp notranslate"><div class="highlight"><pre><span></span><span class="cp">#define GROUP_NUMBER 1        </span><span class="c1">// -&gt; node namespace /G1</span>
+</pre></div>
+</div>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p><strong>The defaults do not match out of the box.</strong> The firmware ships with <code class="docutils literal notranslate"><span class="pre">GROUP_NUMBER</span> <span class="pre">1</span></code>,
+while the launch file and the Base System back-end default to <code class="docutils literal notranslate"><span class="pre">0</span></code>. Set them all to the
+same <code class="docutils literal notranslate"><span class="pre">N</span></code> and reflash, or the Teensy publishes on <code class="docutils literal notranslate"><span class="pre">/G1/encoder_raw</span></code> while the rest of the
+system listens on <code class="docutils literal notranslate"><span class="pre">/G0/encoder_raw</span></code>.</p>
+</div>
+<p>The ROS domain is hard-coded in the same file and must equal <code class="docutils literal notranslate"><span class="pre">ROS_DOMAIN_ID</span></code> on the host:</p>
+<div class="highlight-cpp notranslate"><div class="highlight"><pre><span></span><span class="n">rcl_init_options_set_domain_id</span><span class="p">(</span><span class="o">&amp;</span><span class="n">init_options</span><span class="p">,</span><span class="w"> </span><span class="mi">156</span><span class="p">);</span>
+</pre></div>
+</div>
+</section>
+<section id="build-the-firmware">
+<h3>Build the firmware<a class="headerlink" href="#build-the-firmware" title="Permalink to this heading"></a></h3>
+<p>Source ROS 2 <strong>before</strong> building. The <code class="docutils literal notranslate"><span class="pre">micro_ros_platformio</span></code> build script runs <code class="docutils literal notranslate"><span class="pre">colcon</span>
+<span class="pre">build</span></code> internally to cross-compile the library, so without a sourced ROS 2 it fails before it
+ever reaches your code.</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="nb">cd</span><span class="w"> </span>~/FRA263-Demo_Software/claude-visualizer-ws/encoder_data_publisher
+<span class="nb">source</span><span class="w"> </span>/opt/ros/jazzy/setup.bash
+~/.platformio/penv/bin/pio<span class="w"> </span>run
+</pre></div>
+</div>
+<p>The first build takes 5–15 minutes. It downloads <code class="docutils literal notranslate"><span class="pre">micro_ros_platformio</span></code>, cross-compiles the
+micro-ROS library with the ARM compiler, generates the message headers, and produces the static
+library that is linked into the firmware. Later builds are much faster.</p>
+</section>
+<section id="flash-the-board">
+<h3>Flash the board<a class="headerlink" href="#flash-the-board" title="Permalink to this heading"></a></h3>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>~/.platformio/penv/bin/pio<span class="w"> </span>run<span class="w"> </span>-t<span class="w"> </span>upload
+</pre></div>
+</div>
+<p>The project uses <code class="docutils literal notranslate"><span class="pre">upload_protocol</span> <span class="pre">=</span> <span class="pre">teensy-gui</span></code>, so the Teensy Loader application performs
+the flash. If it does not start on its own, press the button on the board.</p>
+</section>
+<section id="after-changing-a-message">
+<h3>After changing a message<a class="headerlink" href="#after-changing-a-message" title="Permalink to this heading"></a></h3>
+<p>If you edit a <code class="docutils literal notranslate"><span class="pre">.msg</span></code> file or <code class="docutils literal notranslate"><span class="pre">colcon.meta</span></code>, clean the micro-ROS library before rebuilding:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>~/.platformio/penv/bin/pio<span class="w"> </span>run<span class="w"> </span>-t<span class="w"> </span>clean_microros
+~/.platformio/penv/bin/pio<span class="w"> </span>run
+</pre></div>
+</div>
+<p><strong>Why.</strong> An incremental build sees no changed <code class="docutils literal notranslate"><span class="pre">.cpp</span></code> file and skips rebuilding the micro-ROS
+library, so the firmware silently keeps the <strong>old</strong> message definition. This is the usual cause
+of “I edited the message but the firmware still uses the old fields”.</p>
+</section>
+<section id="settings-that-must-match-the-host">
+<h3>Settings that must match the host<a class="headerlink" href="#settings-that-must-match-the-host" title="Permalink to this heading"></a></h3>
 <table class="docutils align-default">
 <colgroup>
 <col style="width: 30%" />
@@ -345,7 +524,7 @@ PlatformIO. Three settings <strong>must</strong> match the host PC, or the messa
 </tr>
 <tr class="row-odd"><td><p>Domain ID</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">156</span></code></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">ROS_DOMAIN_ID</span></code> on the host — see <a class="reference internal" href="#environment-recipe"><span class="std std-ref">The environment recipe</span></a>.</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">ROS_DOMAIN_ID</span></code> on the host — see <a class="reference internal" href="#environment-prep"><span class="std std-ref">The environment preparation</span></a>.</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">GROUP_NUMBER</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">N</span></code></p></td>
@@ -353,9 +532,10 @@ PlatformIO. Three settings <strong>must</strong> match the host PC, or the messa
 </tr>
 </tbody>
 </table>
-<p>The full build and flash procedure, and the reasoning behind each setting, are in
+<p>The reasoning behind each setting, and a walkthrough of the firmware code, are in
 <code class="docutils literal notranslate"><span class="pre">claude-visualizer-ws/encoder_data_publisher/MICROROS_NOTES.md</span></code> and on the
 <a class="reference internal" href="verification_system/teensy_firmware.html"><span class="doc">Teensy 4.1 Firmware</span></a> page.</p>
+</section>
 </section>
 <section id="step-8-load-the-front-end-ui-image">
 <h2>Step 8 — Load the front-end UI image<a class="headerlink" href="#step-8-load-the-front-end-ui-image" title="Permalink to this heading"></a></h2>
@@ -396,8 +576,8 @@ docker<span class="w"> </span>images<span class="w"> </span><span class="p">|</s
 </section>
 <section id="running-the-system">
 <h2>Running the system<a class="headerlink" href="#running-the-system" title="Permalink to this heading"></a></h2>
-<section id="the-environment-recipe">
-<span id="environment-recipe"></span><h3>The environment recipe<a class="headerlink" href="#the-environment-recipe" title="Permalink to this heading"></a></h3>
+<section id="the-environment-preparation">
+<span id="environment-prep"></span><h3>The environment preparation<a class="headerlink" href="#the-environment-preparation" title="Permalink to this heading"></a></h3>
 <p><strong>Every new terminal starts the same way.</strong> A terminal that skips a line here will fail with
 a missing command or a missing module, so run all four in each terminal before the commands
 in the run methods below:</p>
@@ -611,11 +791,11 @@ On top of this, <code class="docutils literal notranslate"><span class="pre">ROS
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">ModuleNotFoundError:</span> <span class="pre">No</span> <span class="pre">module</span> <span class="pre">named</span> <span class="pre">'rclpy'</span></code></p></td>
 <td><p>ROS 2 not sourced (the environment alone does not provide it).</p></td>
-<td><p>Source ROS 2 as well — see <a class="reference internal" href="#environment-recipe"><span class="std std-ref">The environment recipe</span></a>.</p></td>
+<td><p>Source ROS 2 as well — see <a class="reference internal" href="#environment-prep"><span class="std std-ref">The environment preparation</span></a>.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">Package</span> <span class="pre">'micro_ros_agent'</span> <span class="pre">not</span> <span class="pre">found</span></code>, or <code class="docutils literal notranslate"><span class="pre">src/uros</span></code> is empty</p></td>
-<td><p>Step 5 was skipped, or the git links were never filled.</p></td>
-<td><p>Run Step 5. <code class="docutils literal notranslate"><span class="pre">git</span> <span class="pre">submodule</span> <span class="pre">update</span> <span class="pre">--init</span></code> will not work here.</p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">Package</span> <span class="pre">'micro_ros_agent'</span> <span class="pre">not</span> <span class="pre">found</span></code></p></td>
+<td><p>Step 5 was skipped — micro-ROS is not part of the clone.</p></td>
+<td><p>Run Step 5.</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">Permission</span> <span class="pre">denied:</span> <span class="pre">'/dev/ttyACM0'</span></code></p></td>
 <td><p>The user is not in the <code class="docutils literal notranslate"><span class="pre">dialout</span></code> group.</p></td>
@@ -643,9 +823,9 @@ On top of this, <code class="docutils literal notranslate"><span class="pre">ROS
 <section id="where-to-go-next">
 <h2>Where to go next<a class="headerlink" href="#where-to-go-next" title="Permalink to this heading"></a></h2>
 <ul class="simple">
-<li><p><a class="reference internal" href="system_overview.html"><span class="doc">System Architecture &amp; Overview</span></a> — how the parts fit together and what each one does.</p></li>
-<li><p><a class="reference internal" href="verification_system/verification_system.html"><span class="doc">Verification System Implementation</span></a> — the design of each Verification System node.</p></li>
-<li><p><a class="reference internal" href="verification_system/teensy_firmware.html"><span class="doc">Teensy 4.1 Firmware</span></a> — the encoder firmware in detail.</p></li>
+<li><p><a class="reference internal" href="system_overview.html"><span class="doc">System Architecture &amp; Overview</span></a> — the architecture and the overview of the system.</p></li>
+<li><p><a class="reference internal" href="verification_system/verification_system.html"><span class="doc">Verification System Implementation</span></a> — the design of each node in Verification System.</p></li>
+<li><p><a class="reference internal" href="verification_system/teensy_firmware.html"><span class="doc">Teensy 4.1 Firmware</span></a> — the Teensy 4.1 firmware in detail.</p></li>
 </ul>
 </section>
 </section>

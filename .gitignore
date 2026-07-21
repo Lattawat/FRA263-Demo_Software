@@ -4,3 +4,8 @@
 /claude-visualizer-ws/install
 /claude-visualizer-ws/log
 .venv
+
+# micro-ROS is fetched and built by the user (see docs Step 5):
+#   ros2 run micro_ros_setup create_agent_ws.sh
+/claude-visualizer-ws/src/micro_ros_setup
+/claude-visualizer-ws/src/uros
