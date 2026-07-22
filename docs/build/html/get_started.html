@@ -56,14 +56,11 @@
 <li class="toctree-l2"><a class="reference internal" href="#step-5-install-the-micro-ros-agent">Step 5 — Install the micro-ROS agent</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#step-6-build-the-workspace">Step 6 — Build the workspace</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#step-7-build-and-flash-the-teensy-firmware">Step 7 — Build and flash the Teensy firmware</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="#install-platformio">Install PlatformIO</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#allow-the-teensy-to-be-flashed">Allow the Teensy to be flashed</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#what-is-already-set-up">What is already set up</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#set-the-group-number">Set the group number</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#build-the-firmware">Build the firmware</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#flash-the-board">Flash the board</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#after-changing-a-message">After changing a message</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#settings-that-must-match-the-host">Settings that must match the host</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#install-the-platformio-extension">Install the PlatformIO extension</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#open-the-firmware-in-vs-code">Open the firmware in VS Code</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#check-the-group-number-and-domain-before-flashing">Check the group number and domain before flashing</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#allow-the-teensy-to-be-flashed-one-time">Allow the Teensy to be flashed (one time)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#build-and-upload">Build and upload</a></li>
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="#step-8-load-the-front-end-ui-image">Step 8 — Load the front-end UI image</a></li>
@@ -71,7 +68,10 @@
 <li class="toctree-l2"><a class="reference internal" href="#running-the-system">Running the system</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="#the-environment-preparation">The environment preparation</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#method-1-run-without-hardware">Method 1 — Run without hardware</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#method-2-run-with-hardware">Method 2 — Run with hardware</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#method-2-run-with-hardware">Method 2 — Run with hardware</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#identify-the-serial-ports">Identify the serial ports</a></li>
+</ul>
+</li>
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="#ports-and-addresses">Ports and addresses</a></li>
@@ -156,39 +156,6 @@ environment see the ROS packages.</p>
 </tr>
 </tbody>
 </table>
-<p><strong>What the hardware needs.</strong> The two run methods do not need the same equipment. Method 1
-runs on any laptop; only Method 2 needs the rig.</p>
-<table class="docutils align-default">
-<colgroup>
-<col style="width: 26%" />
-<col style="width: 37%" />
-<col style="width: 37%" />
-</colgroup>
-<thead>
-<tr class="row-odd"><th class="head"><p>Part</p></th>
-<th class="head"><p>Method 1 — no hardware</p></th>
-<th class="head"><p>Method 2 — full system</p></th>
-</tr>
-</thead>
-<tbody>
-<tr class="row-even"><td><p>Teensy 4.1 + encoder</p></td>
-<td><p>Not needed. <code class="docutils literal notranslate"><span class="pre">mock_ui</span></code> publishes <code class="docutils literal notranslate"><span class="pre">encoder_raw</span></code> instead.</p></td>
-<td><p>Required. Flashed with the firmware (Step 7).</p></td>
-</tr>
-<tr class="row-odd"><td><p>Robot (STM32)</p></td>
-<td><p>Not needed. <code class="docutils literal notranslate"><span class="pre">mock_ui</span></code> also sends the LSL streams.</p></td>
-<td><p>Required, connected over USB serial.</p></td>
-</tr>
-<tr class="row-even"><td><p>micro-ROS agent</p></td>
-<td><p>Not started.</p></td>
-<td><p>Required (Step 5).</p></td>
-</tr>
-<tr class="row-odd"><td><p>Base System back-end + UI</p></td>
-<td><p>Not started.</p></td>
-<td><p>Required (Steps 4 and 8).</p></td>
-</tr>
-</tbody>
-</table>
 </section>
 <section id="step-1-install-ros-2-jazzy">
 <h2>Step 1 — Install ROS 2 Jazzy<a class="headerlink" href="#step-1-install-ros-2-jazzy" title="Permalink to this heading"></a></h2>
@@ -214,7 +181,7 @@ it again — see <a class="reference internal" href="#environment-prep"><span cl
 </section>
 <section id="step-2-install-the-system-packages">
 <h2>Step 2 — Install the system packages<a class="headerlink" href="#step-2-install-the-system-packages" title="Permalink to this heading"></a></h2>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>sudo<span class="w"> </span>apt<span class="w"> </span>update
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="c1"># package list already refreshed in Step 1</span>
 sudo<span class="w"> </span>apt<span class="w"> </span>install<span class="w"> </span>-y<span class="w"> </span><span class="se">\</span>
 <span class="w">    </span>git<span class="w"> </span><span class="se">\</span>
 <span class="w">    </span>cmake<span class="w"> </span><span class="se">\</span>
@@ -234,34 +201,60 @@ user cannot open them until it belongs to the <code class="docutils literal notr
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>sudo<span class="w"> </span>usermod<span class="w"> </span>-aG<span class="w"> </span>dialout<span class="w"> </span><span class="nv">$USER</span>
 </pre></div>
 </div>
-<p>Log out the session (the same method as shutdown, but select log out instead) and back in
-to take effect. Skipping this gives <code class="docutils literal notranslate"><span class="pre">Permission</span> <span class="pre">denied:</span> <span class="pre">'/dev/ttyACM0'</span></code> later, with
-nothing else to explain it.</p>
+<p>This only takes effect after you log out and back in.</p>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p>Logging out <strong>closes every open application</strong>. Save your work and close your programs
+first. Log out the session (the same method as shutdown, but select log out instead) and
+back in.</p>
+</div>
+<p>Skipping this gives <code class="docutils literal notranslate"><span class="pre">Permission</span> <span class="pre">denied:</span> <span class="pre">'/dev/ttyACM0'</span></code> later, with nothing else to explain
+it.</p>
 </section>
 <section id="step-3-clone-the-repository">
 <h2>Step 3 — Clone the repository<a class="headerlink" href="#step-3-clone-the-repository" title="Permalink to this heading"></a></h2>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="nb">cd</span><span class="w"> </span>~
-git<span class="w"> </span>clone<span class="w"> </span>https://github.com/Lattawat/FRA263-Demo_Software.git
+<p>Clone into any folder you like, then enter it:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>git<span class="w"> </span>clone<span class="w"> </span>https://github.com/Lattawat/FRA263-Demo_Software.git
 <span class="nb">cd</span><span class="w"> </span>FRA263-Demo_Software
 </pre></div>
 </div>
-<p>The rest of this page uses <code class="docutils literal notranslate"><span class="pre">~/FRA263-Demo_Software</span></code> as the project root.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p><strong>Paths on this page are relative to the project root</strong> — the <code class="docutils literal notranslate"><span class="pre">FRA263-Demo_Software</span></code> folder
+the clone just created. Open every new terminal at that root, or <code class="docutils literal notranslate"><span class="pre">cd</span></code> into it first, so the
+relative commands resolve.</p>
+</div>
+<p><strong>What you just cloned.</strong></p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>FRA263-Demo_Software/
+├── claude-visualizer-ws/                    Verification System — ROS 2 Jazzy workspace
+│   ├── src/claude_visualizer/               nodes, launch, config, mock UI
+│   ├── src/claude_visualizer_interface/     custom ROS 2 messages
+│   └── encoder_data_publisher/              Teensy firmware (PlatformIO)
+├── FRA263-264_BaseSystem_BackEnd/           Base System back-end (server_111.py, protocol.py)
+├── FRA263-264_BaseSystem_FrontEnd/          Base System front-end (Docker image + compose)
+├── docs/                                    this documentation
+└── requirements.txt                         Python dependencies
+</pre></div>
+</div>
+<p>See <a class="reference internal" href="system_overview.html"><span class="doc">System Architecture &amp; Overview</span></a> for what each part does. <code class="docutils literal notranslate"><span class="pre">build/</span></code>, <code class="docutils literal notranslate"><span class="pre">install/</span></code>, <code class="docutils literal notranslate"><span class="pre">log/</span></code> and
+<code class="docutils literal notranslate"><span class="pre">.venv</span></code> are not in the clone — you create them in the steps below.</p>
 </section>
 <section id="step-4-create-the-python-environment">
 <h2>Step 4 — Create the Python environment<a class="headerlink" href="#step-4-create-the-python-environment" title="Permalink to this heading"></a></h2>
-<p>The project keeps its Python packages in one virtual environment at the repository root:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="nb">cd</span><span class="w"> </span>~/FRA263-Demo_Software
-python3<span class="w"> </span>-m<span class="w"> </span>venv<span class="w"> </span>.venv
+<p>The project keeps its Python packages in one virtual environment at the repository root. Run
+this from the project root:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python3<span class="w"> </span>-m<span class="w"> </span>venv<span class="w"> </span>.venv
 <span class="nb">source</span><span class="w"> </span>.venv/bin/activate
 </pre></div>
 </div>
-<p>Make sure that the (.venv) is activated. Then, install the dependencies.</p>
+<p>Make sure that the <code class="docutils literal notranslate"><span class="pre">(.venv)</span></code> prompt is showing. Then install the dependencies:</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pip<span class="w"> </span>install<span class="w"> </span>-r<span class="w"> </span>requirements.txt
 </pre></div>
 </div>
-<p><code class="docutils literal notranslate"><span class="pre">requirements.txt</span></code> holds every pip package the project needs — <code class="docutils literal notranslate"><span class="pre">pylsl</span></code>, <code class="docutils literal notranslate"><span class="pre">websockets</span></code>,
-<code class="docutils literal notranslate"><span class="pre">pymodbus</span></code>, <code class="docutils literal notranslate"><span class="pre">pyserial</span></code> and <code class="docutils literal notranslate"><span class="pre">PyYAML</span></code> — for both the Verification System and the Base
-System back-end.</p>
+<p><code class="docutils literal notranslate"><span class="pre">requirements.txt</span></code> holds every pip package the project needs — the application packages
+(<code class="docutils literal notranslate"><span class="pre">pylsl</span></code>, <code class="docutils literal notranslate"><span class="pre">websockets</span></code>, <code class="docutils literal notranslate"><span class="pre">pymodbus</span></code>, <code class="docutils literal notranslate"><span class="pre">pyserial</span></code>, <code class="docutils literal notranslate"><span class="pre">PyYAML</span></code>, <code class="docutils literal notranslate"><span class="pre">numpy</span></code>) <strong>and</strong> the ROS 2
+build tooling (<code class="docutils literal notranslate"><span class="pre">catkin_pkg</span></code>, <code class="docutils literal notranslate"><span class="pre">empy</span></code>, <code class="docutils literal notranslate"><span class="pre">lark</span></code>) that <code class="docutils literal notranslate"><span class="pre">colcon</span> <span class="pre">build</span></code> needs in Step 5 and
+Step 6.</p>
 <div class="admonition note">
 <p class="admonition-title">Note</p>
 <p><strong>Two sets of Python packages.</strong> The virtual environment provides the pip packages
@@ -286,7 +279,13 @@ LSL system library to install.</p>
 <p><strong>micro-ROS is not part of this repository.</strong> It is maintained by the micro-ROS project, so you
 fetch and build it yourself with their official tool. The commands below add it into
 <code class="docutils literal notranslate"><span class="pre">claude-visualizer-ws/src/</span></code> and build it next to the project packages:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="nb">cd</span><span class="w"> </span>~/FRA263-Demo_Software/claude-visualizer-ws
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Keep the <code class="docutils literal notranslate"><span class="pre">.venv</span></code> from Step 4 active for this build. <code class="docutils literal notranslate"><span class="pre">colcon</span> <span class="pre">build</span></code> needs <code class="docutils literal notranslate"><span class="pre">catkin_pkg</span></code>,
+<code class="docutils literal notranslate"><span class="pre">empy</span></code> and <code class="docutils literal notranslate"><span class="pre">lark</span></code>, which Step 4 installed into the environment — the system does not
+provide them inside the environment.</p>
+</div>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="nb">cd</span><span class="w"> </span>claude-visualizer-ws
 <span class="nb">source</span><span class="w"> </span>/opt/ros/jazzy/setup.bash
 
 <span class="c1"># 1. Get the setup tool. The branch must match your ROS 2 distribution.</span>
@@ -316,7 +315,7 @@ ros2<span class="w"> </span>run<span class="w"> </span>micro_ros_setup<span clas
 <h2>Step 6 — Build the workspace<a class="headerlink" href="#step-6-build-the-workspace" title="Permalink to this heading"></a></h2>
 <p>This builds the Verification System packages — <code class="docutils literal notranslate"><span class="pre">claude_visualizer</span></code> and the custom message
 package <code class="docutils literal notranslate"><span class="pre">claude_visualizer_interface</span></code>:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="nb">cd</span><span class="w"> </span>~/FRA263-Demo_Software/claude-visualizer-ws
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="nb">cd</span><span class="w"> </span>claude-visualizer-ws
 <span class="nb">source</span><span class="w"> </span>/opt/ros/jazzy/setup.bash
 colcon<span class="w"> </span>build
 <span class="nb">source</span><span class="w"> </span>install/setup.bash
@@ -336,212 +335,66 @@ point back at the files in <code class="docutils literal notranslate"><span clas
 <h2>Step 7 — Build and flash the Teensy firmware<a class="headerlink" href="#step-7-build-and-flash-the-teensy-firmware" title="Permalink to this heading"></a></h2>
 <p><em>Needed only for Method 2 (with hardware).</em></p>
 <p>The firmware is a PlatformIO project in <code class="docutils literal notranslate"><span class="pre">claude-visualizer-ws/encoder_data_publisher/</span></code>. It
-reads the encoder and publishes <code class="docutils literal notranslate"><span class="pre">/G&lt;N&gt;/encoder_raw</span></code>.</p>
-<p><strong>Why this build is slower and fussier than a normal Arduino sketch.</strong> The firmware sends one
-of our own messages (<code class="docutils literal notranslate"><span class="pre">EncoderRaw</span></code>). On a PC a message package is just a build dependency,
-loaded at run time. A microcontroller has no run time to load anything, so the <strong>entire
-micro-ROS C library — including our message — is cross-compiled into one static library</strong> when
-PlatformIO builds the firmware. The message has to be part of <em>that</em> build; it cannot be added
-afterwards. The pieces below are what make it happen.</p>
-<section id="install-platformio">
-<h3>Install PlatformIO<a class="headerlink" href="#install-platformio" title="Permalink to this heading"></a></h3>
-<p>Either install the VS Code <strong>PlatformIO IDE</strong> extension, or install the command-line tool:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pip<span class="w"> </span>install<span class="w"> </span>platformio
-</pre></div>
-</div>
-<div class="admonition warning">
-<p class="admonition-title">Warning</p>
-<p><strong>Use one ``pio`` and stay with it.</strong> PlatformIO can end up installed twice: system-wide
-(<code class="docutils literal notranslate"><span class="pre">/usr/bin/pio</span></code>) and inside its own managed environment
-(<code class="docutils literal notranslate"><span class="pre">~/.platformio/penv/bin/pio</span></code>), which is the one the VS Code extension always uses. The
-two keep separate build caches, so mixing them on the same project gives builds that
-disagree with each other for no visible reason. This guide uses the managed one.</p>
-</div>
+reads the encoder and publishes <code class="docutils literal notranslate"><span class="pre">/G&lt;N&gt;/encoder_raw</span></code>. The recommended way to build and flash it
+is <strong>VS Code with the PlatformIO IDE extension</strong>. For how the build actually works, the
+command-line alternative, and how to add another message, see
+<a class="reference internal" href="verification_system/teensy_firmware.html"><span class="doc">Teensy 4.1 Firmware</span></a>.</p>
+<section id="install-the-platformio-extension">
+<h3>Install the PlatformIO extension<a class="headerlink" href="#install-the-platformio-extension" title="Permalink to this heading"></a></h3>
+<p>In VS Code open <strong>Extensions</strong>, search for <em>PlatformIO IDE</em>, and install it. (When you open the
+firmware folder in the next step, VS Code also offers to install it, because the folder
+recommends it.)</p>
 </section>
-<section id="allow-the-teensy-to-be-flashed">
-<h3>Allow the Teensy to be flashed<a class="headerlink" href="#allow-the-teensy-to-be-flashed" title="Permalink to this heading"></a></h3>
-<p>A USB device belongs to <code class="docutils literal notranslate"><span class="pre">root</span></code> by default, so PlatformIO cannot write to the board and the
-upload fails with a permission error. The rules file from PJRC (the Teensy maker) gives your
-user access to Teensy boards:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>sudo<span class="w"> </span>curl<span class="w"> </span>-fsSL<span class="w"> </span>https://www.pjrc.com/teensy/00-teensy.rules<span class="w"> </span>-o<span class="w"> </span>/etc/udev/rules.d/00-teensy.rules
-sudo<span class="w"> </span>udevadm<span class="w"> </span>control<span class="w"> </span>--reload-rules<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>sudo<span class="w"> </span>udevadm<span class="w"> </span>trigger
-</pre></div>
-</div>
+<section id="open-the-firmware-in-vs-code">
+<h3>Open the firmware in VS Code<a class="headerlink" href="#open-the-firmware-in-vs-code" title="Permalink to this heading"></a></h3>
+<p><strong>File → Open Folder</strong> and choose <code class="docutils literal notranslate"><span class="pre">claude-visualizer-ws/encoder_data_publisher</span></code>. Open that
+folder itself, not the whole repository — PlatformIO looks for <code class="docutils literal notranslate"><span class="pre">platformio.ini</span></code> at the top of
+the folder you open. Once it loads, the blue <strong>PlatformIO toolbar</strong> appears along the bottom of
+the window.</p>
 </section>
-<section id="what-is-already-set-up">
-<h3>What is already set up<a class="headerlink" href="#what-is-already-set-up" title="Permalink to this heading"></a></h3>
-<p>Three pieces make the custom message reach the firmware. <strong>All three come with the clone — you
-do not create them.</strong> They are described here so you can check them, and so you know what to do
-when you add another message package later.</p>
-<table class="docutils align-default">
-<colgroup>
-<col style="width: 34%" />
-<col style="width: 66%" />
-</colgroup>
-<thead>
-<tr class="row-odd"><th class="head"><p>File</p></th>
-<th class="head"><p>What it does</p></th>
-</tr>
-</thead>
-<tbody>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">platformio.ini</span></code></p></td>
-<td><p>Board, transport and micro-ROS build settings.</p></td>
-</tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">extra_packages/claude_visualizer_interface</span></code></p></td>
-<td><p>A <strong>symlink</strong> to the message package in the ROS 2 workspace.</p></td>
-</tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">colcon.meta</span></code></p></td>
-<td><p>Lists the packages to compile into the firmware library.</p></td>
-</tr>
-</tbody>
-</table>
-<p><strong>1. ``platformio.ini`` — the build and transport settings.</strong></p>
-<div class="highlight-ini notranslate"><div class="highlight"><pre><span></span><span class="na">lib_deps</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">https://github.com/micro-ROS/micro_ros_platformio</span>
-<span class="na">board_microros_distro</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">jazzy</span>
-<span class="na">board_microros_transport</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">serial</span>
-<span class="na">board_microros_user_meta</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">colcon.meta</span>
-</pre></div>
-</div>
-<ul class="simple">
-<li><p><code class="docutils literal notranslate"><span class="pre">lib_deps</span></code> pulls in the <code class="docutils literal notranslate"><span class="pre">micro_ros_platformio</span></code> library, which runs the cross-compilation.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">board_microros_distro</span> <span class="pre">=</span> <span class="pre">jazzy</span></code> chooses which ROS 2 distribution’s message definitions are
-generated. It <strong>must match the ROS 2 distribution on this PC</strong> (Step 1), or the board and the
-agent disagree about the message layout and nothing arrives.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">board_microros_transport</span> <span class="pre">=</span> <span class="pre">serial</span></code> selects the USB-serial transport.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">board_microros_user_meta</span> <span class="pre">=</span> <span class="pre">colcon.meta</span></code> points at the file below.</p></li>
-</ul>
-<p><strong>2. The ``extra_packages`` symlink.</strong></p>
-<p>The build always looks for custom message packages in a folder named <code class="docutils literal notranslate"><span class="pre">extra_packages</span></code> next to
-<code class="docutils literal notranslate"><span class="pre">platformio.ini</span></code>. Instead of copying the package in, the project puts a symlink there that
-points back to the real package in the workspace:</p>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>encoder_data_publisher/extra_packages/claude_visualizer_interface
-    -&gt; ../../src/claude_visualizer_interface
-</pre></div>
-</div>
-<p>Because it is a symlink, the PC nodes and the firmware are built from <strong>one</strong> definition, so
-<code class="docutils literal notranslate"><span class="pre">EncoderRaw</span></code> can never drift apart between them.</p>
-<p>Check that it survived the clone — some copy tools replace a symlink with a real folder:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="nb">cd</span><span class="w"> </span>~/FRA263-Demo_Software/claude-visualizer-ws/encoder_data_publisher
-ls<span class="w"> </span>-l<span class="w"> </span>extra_packages/
-<span class="c1"># expected:  claude_visualizer_interface -&gt; ../../src/claude_visualizer_interface</span>
-</pre></div>
-</div>
-<p>If it is missing or has become a real folder, recreate it (this is also how you add a second
-message package):</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>rm<span class="w"> </span>-rf<span class="w"> </span>extra_packages/claude_visualizer_interface
-ln<span class="w"> </span>-s<span class="w"> </span>../../src/claude_visualizer_interface<span class="w"> </span>extra_packages/claude_visualizer_interface
-</pre></div>
-</div>
-<p><strong>3. ``colcon.meta`` — the list of packages to compile in.</strong></p>
-<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
-<span class="w">    </span><span class="nt">&quot;names&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">        </span><span class="nt">&quot;micro_ros_msgs&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{},</span>
-<span class="w">        </span><span class="nt">&quot;claude_visualizer_interface&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{}</span>
-<span class="w">    </span><span class="p">}</span>
-<span class="p">}</span>
-</pre></div>
-</div>
-<p>This is the file <code class="docutils literal notranslate"><span class="pre">board_microros_user_meta</span></code> points at. Listing
-<code class="docutils literal notranslate"><span class="pre">claude_visualizer_interface</span></code> here is what tells the cross-compile step to build our package
-into the static library. The empty <code class="docutils literal notranslate"><span class="pre">{}</span></code> means “use the default build settings”.</p>
-<div class="admonition note">
-<p class="admonition-title">Note</p>
-<p>Two different things in this project are called a symlink, and only one of them is wanted.
-The colcon flag <code class="docutils literal notranslate"><span class="pre">--symlink-install</span></code> is <strong>not</strong> to be used (Step 6). The
-<code class="docutils literal notranslate"><span class="pre">extra_packages</span></code> symlink here is <strong>required</strong>. They are unrelated.</p>
-</div>
-</section>
-<section id="set-the-group-number">
-<h3>Set the group number<a class="headerlink" href="#set-the-group-number" title="Permalink to this heading"></a></h3>
-<p>The group number is compiled into the firmware. Open
-<code class="docutils literal notranslate"><span class="pre">encoder_data_publisher/src/main.cpp</span></code> and set it:</p>
-<div class="highlight-cpp notranslate"><div class="highlight"><pre><span></span><span class="cp">#define GROUP_NUMBER 1        </span><span class="c1">// -&gt; node namespace /G1</span>
+<section id="check-the-group-number-and-domain-before-flashing">
+<h3>Check the group number and domain before flashing<a class="headerlink" href="#check-the-group-number-and-domain-before-flashing" title="Permalink to this heading"></a></h3>
+<p>Open <code class="docutils literal notranslate"><span class="pre">src/main.cpp</span></code> and confirm two values — the group number near the top, and the domain ID
+inside <code class="docutils literal notranslate"><span class="pre">setup()</span></code>:</p>
+<div class="highlight-cpp notranslate"><div class="highlight"><pre><span></span><span class="cp">#define GROUP_NUMBER 1                                  </span><span class="c1">// set to your group N</span>
+<span class="n">rcl_init_options_set_domain_id</span><span class="p">(</span><span class="o">&amp;</span><span class="n">init_options</span><span class="p">,</span><span class="w"> </span><span class="mi">156</span><span class="p">);</span><span class="w">     </span><span class="c1">// must equal ROS_DOMAIN_ID</span>
 </pre></div>
 </div>
 <div class="admonition warning">
 <p class="admonition-title">Warning</p>
 <p><strong>The defaults do not match out of the box.</strong> The firmware ships with <code class="docutils literal notranslate"><span class="pre">GROUP_NUMBER</span> <span class="pre">1</span></code>,
-while the launch file and the Base System back-end default to <code class="docutils literal notranslate"><span class="pre">0</span></code>. Set them all to the
-same <code class="docutils literal notranslate"><span class="pre">N</span></code> and reflash, or the Teensy publishes on <code class="docutils literal notranslate"><span class="pre">/G1/encoder_raw</span></code> while the rest of the
-system listens on <code class="docutils literal notranslate"><span class="pre">/G0/encoder_raw</span></code>.</p>
+while the launch file and the Base System back-end default to <code class="docutils literal notranslate"><span class="pre">0</span></code>. Set them all to the same
+<code class="docutils literal notranslate"><span class="pre">N</span></code>, and keep the domain at <code class="docutils literal notranslate"><span class="pre">156</span></code> (the value used everywhere in this guide). If they
+disagree, the Teensy publishes on <code class="docutils literal notranslate"><span class="pre">/G1/encoder_raw</span></code> while the rest of the system listens on
+<code class="docutils literal notranslate"><span class="pre">/G0/encoder_raw</span></code> — everything starts, but no data lines up.</p>
 </div>
-<p>The ROS domain is hard-coded in the same file and must equal <code class="docutils literal notranslate"><span class="pre">ROS_DOMAIN_ID</span></code> on the host:</p>
-<div class="highlight-cpp notranslate"><div class="highlight"><pre><span></span><span class="n">rcl_init_options_set_domain_id</span><span class="p">(</span><span class="o">&amp;</span><span class="n">init_options</span><span class="p">,</span><span class="w"> </span><span class="mi">156</span><span class="p">);</span>
+</section>
+<section id="allow-the-teensy-to-be-flashed-one-time">
+<h3>Allow the Teensy to be flashed (one time)<a class="headerlink" href="#allow-the-teensy-to-be-flashed-one-time" title="Permalink to this heading"></a></h3>
+<p>A USB device is owned by <code class="docutils literal notranslate"><span class="pre">root</span></code> by default, so the upload fails with a permission error until
+your user is allowed to access Teensy boards:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>sudo<span class="w"> </span>curl<span class="w"> </span>-fsSL<span class="w"> </span>https://www.pjrc.com/teensy/00-teensy.rules<span class="w"> </span>-o<span class="w"> </span>/etc/udev/rules.d/00-teensy.rules
+sudo<span class="w"> </span>udevadm<span class="w"> </span>control<span class="w"> </span>--reload-rules<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>sudo<span class="w"> </span>udevadm<span class="w"> </span>trigger
 </pre></div>
 </div>
 </section>
-<section id="build-the-firmware">
-<h3>Build the firmware<a class="headerlink" href="#build-the-firmware" title="Permalink to this heading"></a></h3>
-<p>Source ROS 2 <strong>before</strong> building. The <code class="docutils literal notranslate"><span class="pre">micro_ros_platformio</span></code> build script runs <code class="docutils literal notranslate"><span class="pre">colcon</span>
-<span class="pre">build</span></code> internally to cross-compile the library, so without a sourced ROS 2 it fails before it
-ever reaches your code.</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="nb">cd</span><span class="w"> </span>~/FRA263-Demo_Software/claude-visualizer-ws/encoder_data_publisher
-<span class="nb">source</span><span class="w"> </span>/opt/ros/jazzy/setup.bash
-~/.platformio/penv/bin/pio<span class="w"> </span>run
-</pre></div>
-</div>
-<p>The first build takes 5–15 minutes. It downloads <code class="docutils literal notranslate"><span class="pre">micro_ros_platformio</span></code>, cross-compiles the
-micro-ROS library with the ARM compiler, generates the message headers, and produces the static
-library that is linked into the firmware. Later builds are much faster.</p>
-</section>
-<section id="flash-the-board">
-<h3>Flash the board<a class="headerlink" href="#flash-the-board" title="Permalink to this heading"></a></h3>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>~/.platformio/penv/bin/pio<span class="w"> </span>run<span class="w"> </span>-t<span class="w"> </span>upload
-</pre></div>
-</div>
-<p>The project uses <code class="docutils literal notranslate"><span class="pre">upload_protocol</span> <span class="pre">=</span> <span class="pre">teensy-gui</span></code>, so the Teensy Loader application performs
-the flash. If it does not start on its own, press the button on the board.</p>
-</section>
-<section id="after-changing-a-message">
-<h3>After changing a message<a class="headerlink" href="#after-changing-a-message" title="Permalink to this heading"></a></h3>
-<p>If you edit a <code class="docutils literal notranslate"><span class="pre">.msg</span></code> file or <code class="docutils literal notranslate"><span class="pre">colcon.meta</span></code>, clean the micro-ROS library before rebuilding:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>~/.platformio/penv/bin/pio<span class="w"> </span>run<span class="w"> </span>-t<span class="w"> </span>clean_microros
-~/.platformio/penv/bin/pio<span class="w"> </span>run
-</pre></div>
-</div>
-<p><strong>Why.</strong> An incremental build sees no changed <code class="docutils literal notranslate"><span class="pre">.cpp</span></code> file and skips rebuilding the micro-ROS
-library, so the firmware silently keeps the <strong>old</strong> message definition. This is the usual cause
-of “I edited the message but the firmware still uses the old fields”.</p>
-</section>
-<section id="settings-that-must-match-the-host">
-<h3>Settings that must match the host<a class="headerlink" href="#settings-that-must-match-the-host" title="Permalink to this heading"></a></h3>
-<table class="docutils align-default">
-<colgroup>
-<col style="width: 30%" />
-<col style="width: 20%" />
-<col style="width: 50%" />
-</colgroup>
-<thead>
-<tr class="row-odd"><th class="head"><p>Setting</p></th>
-<th class="head"><p>Value</p></th>
-<th class="head"><p>Must match</p></th>
-</tr>
-</thead>
-<tbody>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">board_microros_distro</span></code></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">jazzy</span></code></p></td>
-<td><p>The ROS 2 distribution on this PC (Step 1).</p></td>
-</tr>
-<tr class="row-odd"><td><p>Domain ID</p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">156</span></code></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">ROS_DOMAIN_ID</span></code> on the host — see <a class="reference internal" href="#environment-prep"><span class="std std-ref">The environment preparation</span></a>.</p></td>
-</tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">GROUP_NUMBER</span></code></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">N</span></code></p></td>
-<td><p>The <code class="docutils literal notranslate"><span class="pre">group_number</span></code> everything else is started with.</p></td>
-</tr>
-</tbody>
-</table>
-<p>The reasoning behind each setting, and a walkthrough of the firmware code, are in
-<code class="docutils literal notranslate"><span class="pre">claude-visualizer-ws/encoder_data_publisher/MICROROS_NOTES.md</span></code> and on the
-<a class="reference internal" href="verification_system/teensy_firmware.html"><span class="doc">Teensy 4.1 Firmware</span></a> page.</p>
+<section id="build-and-upload">
+<h3>Build and upload<a class="headerlink" href="#build-and-upload" title="Permalink to this heading"></a></h3>
+<p>With the Teensy plugged in, use the <strong>PlatformIO toolbar</strong> at the bottom of the VS Code window:</p>
+<ul class="simple">
+<li><p><strong>✓ (Build)</strong> compiles the firmware. The first build takes 5–15 minutes.</p></li>
+<li><p><strong>→ (Upload)</strong> flashes the board.</p></li>
+</ul>
+<p>The same actions are under the PlatformIO sidebar → <em>Project Tasks → teensy41 → General → Build
+/ Upload</em>. If the Teensy Loader window opens and waits, press the button on the board to start
+the flash.</p>
 </section>
 </section>
 <section id="step-8-load-the-front-end-ui-image">
 <h2>Step 8 — Load the front-end UI image<a class="headerlink" href="#step-8-load-the-front-end-ui-image" title="Permalink to this heading"></a></h2>
 <p><em>Needed only for Method 2 (with hardware).</em></p>
 <p>The Base System front-end is distributed as a Docker image:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="nb">cd</span><span class="w"> </span>~/FRA263-Demo_Software/FRA263-264_BaseSystem_FrontEnd
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="nb">cd</span><span class="w"> </span>FRA263-264_BaseSystem_FrontEnd
 docker<span class="w"> </span>load<span class="w"> </span>-i<span class="w"> </span>frontend-image_v1_2.tar<span class="w">      </span><span class="c1"># first time only</span>
 docker<span class="w"> </span>compose<span class="w"> </span>up<span class="w"> </span>-d
 </pre></div>
@@ -559,16 +412,16 @@ belong to the removed container option.</p>
 </section>
 <section id="step-9-check-the-installation">
 <h2>Step 9 — Check the installation<a class="headerlink" href="#step-9-check-the-installation" title="Permalink to this heading"></a></h2>
-<p>Run these before trying to start anything. Each line tells you which step failed.</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="nb">source</span><span class="w"> </span>/opt/ros/jazzy/setup.bash
-<span class="nb">source</span><span class="w"> </span>~/FRA263-Demo_Software/claude-visualizer-ws/install/setup.bash
-<span class="nb">source</span><span class="w"> </span>~/FRA263-Demo_Software/.venv/bin/activate
+<p>These checks need no hardware. Run them from the project root; each line tells you which step
+failed. The real functional test is Method 1 below — if it draws charts, the install is good.</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="c1"># from the project root</span>
+<span class="nb">source</span><span class="w"> </span>/opt/ros/jazzy/setup.bash
+<span class="nb">source</span><span class="w"> </span>claude-visualizer-ws/install/setup.bash
+<span class="nb">source</span><span class="w"> </span>.venv/bin/activate
 
 printenv<span class="w"> </span>ROS_DISTRO<span class="w">                                   </span><span class="c1"># Step 1 -&gt; jazzy</span>
 ros2<span class="w"> </span>pkg<span class="w"> </span>list<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>-E<span class="w"> </span><span class="s2">&quot;claude|micro_ros_agent&quot;</span><span class="w">      </span><span class="c1"># Steps 5, 6</span>
-python3<span class="w"> </span>-c<span class="w"> </span><span class="s2">&quot;import pylsl, websockets, pymodbus, serial, yaml; print(&#39;python deps OK&#39;)&quot;</span>
-ls<span class="w"> </span>/dev/ttyACM*<span class="w">                                       </span><span class="c1"># Method 2 only: the USB devices</span>
-docker<span class="w"> </span>images<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>frontend<span class="w">                         </span><span class="c1"># Method 2 only: Step 8</span>
+python3<span class="w"> </span>-c<span class="w"> </span><span class="s2">&quot;import pylsl, websockets, pymodbus, serial, yaml, numpy; print(&#39;python deps OK&#39;)&quot;</span>
 </pre></div>
 </div>
 <p><code class="docutils literal notranslate"><span class="pre">ros2</span> <span class="pre">pkg</span> <span class="pre">list</span></code> should show <code class="docutils literal notranslate"><span class="pre">claude_visualizer</span></code> and <code class="docutils literal notranslate"><span class="pre">claude_visualizer_interface</span></code>, plus
@@ -581,10 +434,11 @@ docker<span class="w"> </span>images<span class="w"> </span><span class="p">|</s
 <p><strong>Every new terminal starts the same way.</strong> A terminal that skips a line here will fail with
 a missing command or a missing module, so run all four in each terminal before the commands
 in the run methods below:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="nb">source</span><span class="w"> </span>/opt/ros/jazzy/setup.bash<span class="w">                                    </span><span class="c1"># ROS 2</span>
-<span class="nb">source</span><span class="w"> </span>~/FRA263-Demo_Software/claude-visualizer-ws/install/setup.bash<span class="w">   </span><span class="c1"># this workspace</span>
-<span class="nb">source</span><span class="w"> </span>~/FRA263-Demo_Software/.venv/bin/activate<span class="w">                    </span><span class="c1"># Python packages</span>
-<span class="nb">export</span><span class="w"> </span><span class="nv">ROS_DOMAIN_ID</span><span class="o">=</span><span class="m">156</span><span class="w">                                            </span><span class="c1"># must match the Teensy</span>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="c1"># from the project root</span>
+<span class="nb">source</span><span class="w"> </span>/opt/ros/jazzy/setup.bash<span class="w">                       </span><span class="c1"># ROS 2</span>
+<span class="nb">source</span><span class="w"> </span>claude-visualizer-ws/install/setup.bash<span class="w">         </span><span class="c1"># this workspace</span>
+<span class="nb">source</span><span class="w"> </span>.venv/bin/activate<span class="w">                              </span><span class="c1"># Python packages</span>
+<span class="nb">export</span><span class="w"> </span><span class="nv">ROS_DOMAIN_ID</span><span class="o">=</span><span class="m">156</span><span class="w">                               </span><span class="c1"># must match the Teensy</span>
 </pre></div>
 </div>
 <p><code class="docutils literal notranslate"><span class="pre">ROS_DOMAIN_ID</span></code> is not decoration. The Teensy firmware joins domain <strong>156</strong>, and nodes on
@@ -609,12 +463,12 @@ micro-ROS agent, <strong>no</strong> Base System back-end, and <strong>no</stron
 </div>
 <p><strong>Terminal 1 — the mock UI.</strong> Note it is started with <code class="docutils literal notranslate"><span class="pre">python3</span></code>; it is not installed as a
 ROS executable:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="nb">cd</span><span class="w"> </span>~/FRA263-Demo_Software/claude-visualizer-ws
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="nb">cd</span><span class="w"> </span>claude-visualizer-ws
 python3<span class="w"> </span>src/claude_visualizer/mock_UI/mock_ui.py<span class="w"> </span>--group-number<span class="w"> </span>N
 </pre></div>
 </div>
 <p><strong>Terminal 2 — the ROS 2 pipeline:</strong></p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="nb">cd</span><span class="w"> </span>~/FRA263-Demo_Software/claude-visualizer-ws
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="nb">cd</span><span class="w"> </span>claude-visualizer-ws
 ros2<span class="w"> </span>launch<span class="w"> </span>claude_visualizer<span class="w"> </span>bringup.launch.py<span class="w"> </span>group_number:<span class="o">=</span>N
 </pre></div>
 </div>
@@ -624,8 +478,33 @@ ros2<span class="w"> </span>launch<span class="w"> </span>claude_visualizer<span
 </section>
 <section id="method-2-run-with-hardware">
 <h3>Method 2 — Run with hardware<a class="headerlink" href="#method-2-run-with-hardware" title="Permalink to this heading"></a></h3>
-<p><strong>This is the full system.</strong> Plug in the Teensy and the robot first, then start the four
-terminals in this order. Each one uses the environment recipe above.</p>
+<p><strong>This is the full system.</strong> Plug in the Teensy and the robot, identify their serial ports
+(below), then start the four terminals in order. Each one uses the environment preparation above.</p>
+<section id="identify-the-serial-ports">
+<h4>Identify the serial ports<a class="headerlink" href="#identify-the-serial-ports" title="Permalink to this heading"></a></h4>
+<p>Both the Teensy and the robot appear as <code class="docutils literal notranslate"><span class="pre">/dev/ttyACM*</span></code> devices, and the numbering depends on
+the order they were plugged in — so you have to find out which is which. The simplest way is to
+plug them in <strong>one at a time</strong>:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>ls<span class="w"> </span>/dev/ttyACM*<span class="w">        </span><span class="c1"># nothing plugged in: &quot;No such file or directory&quot;</span>
+<span class="c1"># plug in the Teensy, then:</span>
+ls<span class="w"> </span>/dev/ttyACM*<span class="w">        </span><span class="c1"># the new entry is the Teensy   (e.g. /dev/ttyACM0)</span>
+<span class="c1"># plug in the robot, then:</span>
+ls<span class="w"> </span>/dev/ttyACM*<span class="w">        </span><span class="c1"># the second entry is the robot (e.g. /dev/ttyACM1)</span>
+</pre></div>
+</div>
+<p>If both are already connected, <code class="docutils literal notranslate"><span class="pre">udevadm</span></code> tells them apart — the Teensy reports a
+Teensyduino / PJRC model, the robot an STMicroelectronics one:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>udevadm<span class="w"> </span>info<span class="w"> </span>-q<span class="w"> </span>property<span class="w"> </span>-n<span class="w"> </span>/dev/ttyACM0<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>-E<span class="w"> </span><span class="s2">&quot;ID_VENDOR|ID_MODEL&quot;</span>
+</pre></div>
+</div>
+<p>The two ports are used in two different places:</p>
+<ul class="simple">
+<li><p>The <strong>micro-ROS agent</strong> (Terminal 1) reads the <strong>Teensy</strong> — give it that port with <code class="docutils literal notranslate"><span class="pre">--dev</span></code>.</p></li>
+<li><p>The <strong>Base System back-end</strong> takes <strong>no</strong> port on the command line. You connect the <strong>robot</strong>
+from the browser UI (Terminal 4): in the connect dialog, enter the robot’s <code class="docutils literal notranslate"><span class="pre">ttyACM</span></code>
+<strong>number</strong> and the slave address <strong>21</strong>. The back-end builds <code class="docutils literal notranslate"><span class="pre">/dev/ttyACM{number}</span></code> from it —
+so a robot at <code class="docutils literal notranslate"><span class="pre">/dev/ttyACM1</span></code> means you enter port <strong>1</strong>.</p></li>
+</ul>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>Terminal 1 - micro-ROS agent
   Teensy 4.1  --USB serial 115200--&gt;  micro_ros_agent  --&gt;  /G&lt;N&gt;/encoder_raw
 
@@ -645,34 +524,30 @@ Terminal 4 - Front-end UI  (docker compose up -d)
   Browser :3000 &lt;-- React UI container
 </pre></div>
 </div>
-<p><strong>Terminal 1 — micro-ROS agent (Teensy bridge):</strong></p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="nb">cd</span><span class="w"> </span>~/FRA263-Demo_Software/claude-visualizer-ws
+<p><strong>Terminal 1 — micro-ROS agent (Teensy bridge).</strong> Use <em>your</em> Teensy port (<code class="docutils literal notranslate"><span class="pre">/dev/ttyACM0</span></code> here):</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="nb">cd</span><span class="w"> </span>claude-visualizer-ws
 ros2<span class="w"> </span>run<span class="w"> </span>micro_ros_agent<span class="w"> </span>micro_ros_agent<span class="w"> </span>serial<span class="w"> </span>--dev<span class="w"> </span>/dev/ttyACM0<span class="w"> </span>-b<span class="w"> </span><span class="m">115200</span>
 </pre></div>
 </div>
 <p><strong>Terminal 2 — ROS 2 pipeline:</strong></p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="nb">cd</span><span class="w"> </span>~/FRA263-Demo_Software/claude-visualizer-ws
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="nb">cd</span><span class="w"> </span>claude-visualizer-ws
 ros2<span class="w"> </span>launch<span class="w"> </span>claude_visualizer<span class="w"> </span>bringup.launch.py<span class="w"> </span>group_number:<span class="o">=</span>N
 </pre></div>
 </div>
 <p><strong>Terminal 3 — Base System back-end:</strong></p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="nb">cd</span><span class="w"> </span>~/FRA263-Demo_Software/FRA263-264_BaseSystem_BackEnd
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="nb">cd</span><span class="w"> </span>FRA263-264_BaseSystem_BackEnd
 python3<span class="w"> </span>server_111.py<span class="w"> </span>--group_number<span class="w"> </span>N
 </pre></div>
 </div>
 <p><strong>Terminal 4 — Base System front-end:</strong></p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="nb">cd</span><span class="w"> </span>~/FRA263-Demo_Software/FRA263-264_BaseSystem_FrontEnd
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="nb">cd</span><span class="w"> </span>FRA263-264_BaseSystem_FrontEnd
 docker<span class="w"> </span>compose<span class="w"> </span>up<span class="w"> </span>-d
 </pre></div>
 </div>
-<p>Then open both pages: the verifier dashboard at <a class="reference external" href="http://localhost:8000">http://localhost:8000</a> and the Base System UI
-at <a class="reference external" href="http://localhost:3000">http://localhost:3000</a>.</p>
-<div class="admonition note">
-<p class="admonition-title">Note</p>
-<p>If the Teensy is not at <code class="docutils literal notranslate"><span class="pre">/dev/ttyACM0</span></code>, run <code class="docutils literal notranslate"><span class="pre">ls</span> <span class="pre">/dev/ttyACM*</span></code> and use the path you
-find. With both the Teensy and the robot plugged in there will be two devices, and the
-numbering depends on the order they were connected.</p>
-</div>
+<p>Then open both pages: the verifier dashboard at <a class="reference external" href="http://localhost:8000">http://localhost:8000</a> and the Base System UI at
+<a class="reference external" href="http://localhost:3000">http://localhost:3000</a>. In the Base System UI, connect to the robot using its port <strong>number</strong> and
+slave <strong>21</strong> — see “Identify the serial ports” above.</p>
+</section>
 </section>
 </section>
 <section id="ports-and-addresses">
@@ -787,33 +662,37 @@ On top of this, <code class="docutils literal notranslate"><span class="pre">ROS
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">ModuleNotFoundError:</span> <span class="pre">No</span> <span class="pre">module</span> <span class="pre">named</span> <span class="pre">'pylsl'</span></code></p></td>
 <td><p>The virtual environment is not active.</p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">source</span> <span class="pre">~/FRA263-Demo_Software/.venv/bin/activate</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">source</span> <span class="pre">.venv/bin/activate</span></code> (from the project root)</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">ModuleNotFoundError:</span> <span class="pre">No</span> <span class="pre">module</span> <span class="pre">named</span> <span class="pre">'rclpy'</span></code></p></td>
 <td><p>ROS 2 not sourced (the environment alone does not provide it).</p></td>
 <td><p>Source ROS 2 as well — see <a class="reference internal" href="#environment-prep"><span class="std std-ref">The environment preparation</span></a>.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">Package</span> <span class="pre">'micro_ros_agent'</span> <span class="pre">not</span> <span class="pre">found</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">colcon</span> <span class="pre">build</span></code>: <code class="docutils literal notranslate"><span class="pre">No</span> <span class="pre">module</span> <span class="pre">named</span> <span class="pre">'catkin_pkg'</span></code> / <code class="docutils literal notranslate"><span class="pre">'em'</span></code> / <code class="docutils literal notranslate"><span class="pre">'lark'</span></code></p></td>
+<td><p>The build tooling is not in the active virtual environment.</p></td>
+<td><p>Activate <code class="docutils literal notranslate"><span class="pre">.venv</span></code> and re-run <code class="docutils literal notranslate"><span class="pre">pip</span> <span class="pre">install</span> <span class="pre">-r</span> <span class="pre">requirements.txt</span></code> (Step 4).</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">Package</span> <span class="pre">'micro_ros_agent'</span> <span class="pre">not</span> <span class="pre">found</span></code></p></td>
 <td><p>Step 5 was skipped — micro-ROS is not part of the clone.</p></td>
 <td><p>Run Step 5.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">Permission</span> <span class="pre">denied:</span> <span class="pre">'/dev/ttyACM0'</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">Permission</span> <span class="pre">denied:</span> <span class="pre">'/dev/ttyACM0'</span></code></p></td>
 <td><p>The user is not in the <code class="docutils literal notranslate"><span class="pre">dialout</span></code> group.</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">sudo</span> <span class="pre">usermod</span> <span class="pre">-aG</span> <span class="pre">dialout</span> <span class="pre">$USER</span></code>, then log out and back in.</p></td>
 </tr>
-<tr class="row-odd"><td><p>Everything starts, but the charts stay empty</p></td>
+<tr class="row-even"><td><p>Everything starts, but the charts stay empty</p></td>
 <td><p>Group number or <code class="docutils literal notranslate"><span class="pre">ROS_DOMAIN_ID</span></code> does not match across the parts.</p></td>
 <td><p>Check all four places above, and <code class="docutils literal notranslate"><span class="pre">ROS_DOMAIN_ID=156</span></code> everywhere.</p></td>
 </tr>
-<tr class="row-even"><td><p>A node runs old code, or a renamed file is still loaded</p></td>
+<tr class="row-odd"><td><p>A node runs old code, or a renamed file is still loaded</p></td>
 <td><p>The workspace was built with <code class="docutils literal notranslate"><span class="pre">--symlink-install</span></code>.</p></td>
 <td><p>Delete <code class="docutils literal notranslate"><span class="pre">build/</span></code>, <code class="docutils literal notranslate"><span class="pre">install/</span></code>, <code class="docutils literal notranslate"><span class="pre">log/</span></code> and run <code class="docutils literal notranslate"><span class="pre">colcon</span> <span class="pre">build</span></code> again.</p></td>
 </tr>
-<tr class="row-odd"><td><p>Port 3000 or 8765 already in use</p></td>
+<tr class="row-even"><td><p>Port 3000 or 8765 already in use</p></td>
 <td><p>Another copy of the UI or back-end is still running.</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">docker</span> <span class="pre">compose</span> <span class="pre">down</span></code>; stop the other <code class="docutils literal notranslate"><span class="pre">server_111.py</span></code>.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">colcon:</span> <span class="pre">command</span> <span class="pre">not</span> <span class="pre">found</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">colcon:</span> <span class="pre">command</span> <span class="pre">not</span> <span class="pre">found</span></code></p></td>
 <td><p>The colcon package is missing.</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">sudo</span> <span class="pre">apt</span> <span class="pre">install</span> <span class="pre">python3-colcon-common-extensions</span></code></p></td>
 </tr>

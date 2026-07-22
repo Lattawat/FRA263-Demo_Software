@@ -170,6 +170,71 @@ not the ROS 2 CamelCase names. The generator flattens
 
 These three forms are exactly what you will see in the code below.
 
+Building and flashing the firmware
+----------------------------------
+
+The install guide (:doc:`../get_started`, Step 7) covers the quick path: open the folder in VS
+Code and click Build then Upload. This section is the full reference — the command-line build,
+the traps, and the one-time setup.
+
+**Two ways to build.** The recommended way is the **VS Code PlatformIO IDE** extension: open
+``encoder_data_publisher`` as a folder and use the ✓ (Build) and → (Upload) buttons on the
+bottom toolbar. The command-line equivalent is:
+
+.. code-block:: bash
+
+   source /opt/ros/jazzy/setup.bash          # required — see below
+   ~/.platformio/penv/bin/pio run            # build
+   ~/.platformio/penv/bin/pio run -t upload  # flash
+
+**Source ROS 2 before building.** The ``micro_ros_platformio`` library runs ``colcon build``
+internally to cross-compile the micro-ROS library, so without a sourced ROS 2 the build fails
+before it ever reaches the firmware code.
+
+**The first build takes 5–15 minutes.** It downloads ``micro_ros_platformio``, cross-compiles
+the micro-ROS library with the ARM toolchain, generates the message headers, and produces the
+static ``.a`` library that is linked into the firmware. Later builds are much faster.
+
+.. warning::
+
+   **Use one ``pio`` binary and stay with it.** PlatformIO can end up installed twice:
+   system-wide (``/usr/bin/pio``) and inside its own managed environment
+   (``~/.platformio/penv/bin/pio``, the one the VS Code extension uses). The two keep separate
+   build caches, so mixing them on the same project produces builds that disagree with each
+   other for no visible reason.
+
+**Flash permission (one time on Linux).** A USB device is owned by ``root`` by default, so the
+upload fails with a permission error until your user is allowed to access Teensy boards. Install
+the PJRC udev rules:
+
+.. code-block:: bash
+
+   sudo curl -fsSL https://www.pjrc.com/teensy/00-teensy.rules -o /etc/udev/rules.d/00-teensy.rules
+   sudo udevadm control --reload-rules && sudo udevadm trigger
+
+**If the ``extra_packages`` symlink did not survive the clone.** Some copy tools replace a
+symlink with a real folder. Check it, and recreate it if needed (this is also how you add a
+second message package):
+
+.. code-block:: bash
+
+   cd claude-visualizer-ws/encoder_data_publisher
+   ls -l extra_packages/
+   # expected:  claude_visualizer_interface -> ../../src/claude_visualizer_interface
+
+   # if it is missing or became a real folder:
+   rm -rf extra_packages/claude_visualizer_interface
+   ln -s ../../src/claude_visualizer_interface extra_packages/claude_visualizer_interface
+
+**After changing a message or ``colcon.meta`` — clean first.** As noted above, an incremental
+build skips rebuilding the micro-ROS library, so the firmware silently keeps the old message
+definition:
+
+.. code-block:: bash
+
+   ~/.platformio/penv/bin/pio run -t clean_microros
+   ~/.platformio/penv/bin/pio run
+
 Node Workflow
 -------------
 

@@ -5,12 +5,22 @@
 #     source .venv/bin/activate
 #     pip install -r requirements.txt
 #
-# ROS 2 packages (rclpy, ament_index_python, the custom message packages) are NOT
-# installed with pip. They come from /opt/ros/jazzy and from the built workspace,
-# and become importable when you source their setup.bash files.
+# rclpy and the message packages are NOT pip-installed — they come from
+# /opt/ros/jazzy and the built workspace once you source their setup.bash files.
 
+# ── Application dependencies (imported by the nodes / back-end) ───────────────
 pylsl>=1.16          # LSL bridge; ships its own liblsl.so, no system library needed
 websockets>=16.0     # web_visualizer + server_111 WebSocket servers
 pymodbus>=3.3.0      # Modbus RTU link to the robot controller
 pyserial>=3.5        # serial transport used by pymodbus
 PyYAML>=6.0          # params.yaml / criteria.yaml loading
+numpy                # Kalman filter + mock encoder maths
+
+# ── ROS 2 build tooling ──────────────────────────────────────────────────────
+# Needed by `colcon build` when the virtual environment is active. The venv has
+# no system site-packages, so the apt versions (python3-catkin-pkg /
+# python3-empy / python3-lark) are not visible inside it.
+# empy MUST be 3.3.4 — 4.x breaks ROS 2 message generation on Jazzy.
+catkin_pkg
+empy==3.3.4
+lark

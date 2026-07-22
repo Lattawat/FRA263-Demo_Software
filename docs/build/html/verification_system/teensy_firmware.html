@@ -53,6 +53,7 @@
 <li class="toctree-l2"><a class="reference internal" href="verification_system_custom_interface/verification_system_custom_interface.html">Custom Interface</a></li>
 <li class="toctree-l2 current"><a class="current reference internal" href="#">Teensy 4.1 Firmware</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="#how-the-custom-interface-is-used-on-the-microcontroller">How the custom interface is used on the microcontroller</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#building-and-flashing-the-firmware">Building and flashing the firmware</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#node-workflow">Node Workflow</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#examine-the-code">Examine the code</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#notation">Notation</a></li>
@@ -264,6 +265,60 @@ not the ROS 2 CamelCase names. The generator flattens
 </tbody>
 </table>
 <p>These three forms are exactly what you will see in the code below.</p>
+</section>
+<section id="building-and-flashing-the-firmware">
+<h2>Building and flashing the firmware<a class="headerlink" href="#building-and-flashing-the-firmware" title="Permalink to this heading"></a></h2>
+<p>The install guide (<a class="reference internal" href="../get_started.html"><span class="doc">Getting Started</span></a>, Step 7) covers the quick path: open the folder in VS
+Code and click Build then Upload. This section is the full reference — the command-line build,
+the traps, and the one-time setup.</p>
+<p><strong>Two ways to build.</strong> The recommended way is the <strong>VS Code PlatformIO IDE</strong> extension: open
+<code class="docutils literal notranslate"><span class="pre">encoder_data_publisher</span></code> as a folder and use the ✓ (Build) and → (Upload) buttons on the
+bottom toolbar. The command-line equivalent is:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="nb">source</span><span class="w"> </span>/opt/ros/jazzy/setup.bash<span class="w">          </span><span class="c1"># required — see below</span>
+~/.platformio/penv/bin/pio<span class="w"> </span>run<span class="w">            </span><span class="c1"># build</span>
+~/.platformio/penv/bin/pio<span class="w"> </span>run<span class="w"> </span>-t<span class="w"> </span>upload<span class="w">  </span><span class="c1"># flash</span>
+</pre></div>
+</div>
+<p><strong>Source ROS 2 before building.</strong> The <code class="docutils literal notranslate"><span class="pre">micro_ros_platformio</span></code> library runs <code class="docutils literal notranslate"><span class="pre">colcon</span> <span class="pre">build</span></code>
+internally to cross-compile the micro-ROS library, so without a sourced ROS 2 the build fails
+before it ever reaches the firmware code.</p>
+<p><strong>The first build takes 5–15 minutes.</strong> It downloads <code class="docutils literal notranslate"><span class="pre">micro_ros_platformio</span></code>, cross-compiles
+the micro-ROS library with the ARM toolchain, generates the message headers, and produces the
+static <code class="docutils literal notranslate"><span class="pre">.a</span></code> library that is linked into the firmware. Later builds are much faster.</p>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p><strong>Use one ``pio`` binary and stay with it.</strong> PlatformIO can end up installed twice:
+system-wide (<code class="docutils literal notranslate"><span class="pre">/usr/bin/pio</span></code>) and inside its own managed environment
+(<code class="docutils literal notranslate"><span class="pre">~/.platformio/penv/bin/pio</span></code>, the one the VS Code extension uses). The two keep separate
+build caches, so mixing them on the same project produces builds that disagree with each
+other for no visible reason.</p>
+</div>
+<p><strong>Flash permission (one time on Linux).</strong> A USB device is owned by <code class="docutils literal notranslate"><span class="pre">root</span></code> by default, so the
+upload fails with a permission error until your user is allowed to access Teensy boards. Install
+the PJRC udev rules:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>sudo<span class="w"> </span>curl<span class="w"> </span>-fsSL<span class="w"> </span>https://www.pjrc.com/teensy/00-teensy.rules<span class="w"> </span>-o<span class="w"> </span>/etc/udev/rules.d/00-teensy.rules
+sudo<span class="w"> </span>udevadm<span class="w"> </span>control<span class="w"> </span>--reload-rules<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>sudo<span class="w"> </span>udevadm<span class="w"> </span>trigger
+</pre></div>
+</div>
+<p><strong>If the ``extra_packages`` symlink did not survive the clone.</strong> Some copy tools replace a
+symlink with a real folder. Check it, and recreate it if needed (this is also how you add a
+second message package):</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="nb">cd</span><span class="w"> </span>claude-visualizer-ws/encoder_data_publisher
+ls<span class="w"> </span>-l<span class="w"> </span>extra_packages/
+<span class="c1"># expected:  claude_visualizer_interface -&gt; ../../src/claude_visualizer_interface</span>
+
+<span class="c1"># if it is missing or became a real folder:</span>
+rm<span class="w"> </span>-rf<span class="w"> </span>extra_packages/claude_visualizer_interface
+ln<span class="w"> </span>-s<span class="w"> </span>../../src/claude_visualizer_interface<span class="w"> </span>extra_packages/claude_visualizer_interface
+</pre></div>
+</div>
+<p><strong>After changing a message or ``colcon.meta`` — clean first.</strong> As noted above, an incremental
+build skips rebuilding the micro-ROS library, so the firmware silently keeps the old message
+definition:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>~/.platformio/penv/bin/pio<span class="w"> </span>run<span class="w"> </span>-t<span class="w"> </span>clean_microros
+~/.platformio/penv/bin/pio<span class="w"> </span>run
+</pre></div>
+</div>
 </section>
 <section id="node-workflow">
 <h2>Node Workflow<a class="headerlink" href="#node-workflow" title="Permalink to this heading"></a></h2>
