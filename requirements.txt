@@ -11,7 +11,7 @@
 # ── Application dependencies (imported by the nodes / back-end) ───────────────
 pylsl>=1.16          # LSL bridge; ships its own liblsl.so, no system library needed
 websockets>=16.0     # web_visualizer + server_111 WebSocket servers
-pymodbus>=3.3.0      # Modbus RTU link to the robot controller
+pymodbus==3.3.0      # Modbus RTU link to the robot controller
 pyserial>=3.5        # serial transport used by pymodbus
 PyYAML>=6.0          # params.yaml / criteria.yaml loading
 numpy                # Kalman filter + mock encoder maths

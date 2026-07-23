@@ -32,3 +32,4 @@ Contents
    Tutorial
    Base System
    verification_system/verification_system.rst
+   side_note.rst
